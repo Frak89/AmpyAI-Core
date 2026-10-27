@@ -1,6 +1,7 @@
 package com.ampyai.core;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.content.Context;
 import android.content.Intent;
@@ -17,6 +18,10 @@ import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.EditText;
+import android.widget.SeekBar;
+import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 import org.json.JSONObject;
@@ -47,6 +52,12 @@ public final class MainActivity extends Activity {
     private LinearLayout root;
     private FragBrain brain;
     private FragKnowledgeStore knowledge;
+    private FragBrainGraphView openBrainGraph;
+    private TextView openBrainStatus;
+    private String brainInspection = "crea un pulsante con scritto Salva";
+    private volatile String liveBrainInspection = "crea un pulsante con scritto Salva";
+    private int requestedNeurons = 32;
+    private int requestedEpochs = 70;
     private FragTrainingStore trainingStore;
     private volatile FragNeuralTrainer.Model trainedModel;
     private static final int REQUEST_DATASET = 1027;
@@ -68,6 +79,8 @@ public final class MainActivity extends Activity {
         document = UiDocument.parse(preferences.getString("canvas", null));
         brain = new FragBrain(preferences);
         knowledge = new FragKnowledgeStore(getApplicationContext());
+        requestedNeurons = preferences.getInt("frag_v3_neurons", 32);
+        requestedEpochs = preferences.getInt("frag_v3_epochs", 70);
         trainingStore = new FragTrainingStore(getApplicationContext());
         try {
             trainedModel = trainingStore.loadModel();
@@ -146,6 +159,7 @@ public final class MainActivity extends Activity {
         chat.append("Tu", prompt);
         saveChat();
         chat.logStage("Interpreto: " + shortText(prompt));
+        if (handleBrainRequest(prompt)) return;
         if (handleTrainingRequest(prompt)) return;
         if (prompt.equalsIgnoreCase("annulla") || prompt.equalsIgnoreCase("undo")) {
             cancelPendingProposal();
@@ -170,8 +184,8 @@ public final class MainActivity extends Activity {
                       "interpreto comandi, faccio anteprime, registro preferenze " +
                       "e cerco fonti online verificabili. Fråg V2 include anche una piccola " +
                       "rete neurale da addestrare sul dispositivo (non è un LLM). " +
-                      "Prova: esempi base, allena Fråg, prova AI: crea un tasto, " +
-                      "aiuto training, proponi uno stile, cerca online material design.");
+                      "Prova: Cervello, Psicofråg, Lista cervello, Approfondisci pulsante, " +
+                      "esempi base, allena Fråg, Modella cervello 48 100.");
                 chat.logStage("Ho spiegato le capacità disponibili.");
                 break;
             case STYLE:
@@ -187,12 +201,265 @@ public final class MainActivity extends Activity {
      * The trainer is opt-in. All manual labels and imported datasets are stored
      * privately. There is no hidden scraping or remote training service.
      */
+    private boolean handleBrainRequest(String prompt) {
+        String raw = prompt.trim();
+        String normal = raw.toLowerCase(Locale.ROOT);
+        if (normal.equals("cervello") || normal.equals("brain")) {
+            chat.logStage("Apro l'architettura effettiva del Neural Core.");
+            showBrainDialog(false);
+            return true;
+        }
+        if (normal.equals("psicofråg") || normal.equals("psicofrag")
+                || normal.equals("psico fråg") || normal.equals("psicocervello")) {
+            chat.logStage("Psicofråg: ispeziono parametri, attività e collegamenti.");
+            showBrainDialog(true);
+            return true;
+        }
+        if (normal.equals("lista cervello") || normal.equals("lista comandi cervello")) {
+            reply(FragCapabilities.list());
+            chat.logStage("Registro delle funzioni installate consultato.");
+            return true;
+        }
+        Matcher more = Pattern.compile("^approfondisci\\s+(.+)$",
+                Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(raw);
+        if (more.matches()) {
+            explainKnowledge(more.group(1).trim());
+            return true;
+        }
+        Matcher config = Pattern.compile("^(?:modella|configura)\\s+cervello\\s+(\\d+)\\s+(\\d+)$",
+                Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(raw);
+        if (config.matches()) {
+            try {
+                setBrainConfig(Integer.parseInt(config.group(1)),
+                               Integer.parseInt(config.group(2)));
+            } catch (IllegalArgumentException ex) {
+                reply("Configurazione non valida: " + ex.getMessage());
+            }
+            return true;
+        }
+        if (normal.equals("modella cervello") || normal.equals("configura cervello")) {
+            showBrainDialog(true);
+            return true;
+        }
+        return false;
+    }
+
+    private void setBrainConfig(int neurons, int epochs) {
+        if (training.get()) {
+            reply("Attendi il termine del training prima di cambiare architettura.");
+            return;
+        }
+        FragNeuralTrainer.Configuration config = new FragNeuralTrainer.Configuration(neurons, epochs);
+        requestedNeurons = config.hidden;
+        requestedEpochs = config.epochs;
+        preferences.edit().putInt("frag_v3_neurons", neurons)
+                .putInt("frag_v3_epochs", epochs).apply();
+        chat.logStage("Nuova configurazione desiderata: " + neurons + " neuroni, " +
+                epochs + " epoche.");
+        reply("🧬 Impostato: 384 ingressi → " + neurons + " neuroni ReLU → 7 uscite, " +
+                epochs + " epoche.\nLa rete salvata NON cambia finché non scrivi «allena Fråg». " +
+                "Puoi vedere la differenza con «Psicofråg».");
+    }
+
+    private void explainKnowledge(String subject) {
+        if (subject.isEmpty() || subject.length() > 100) {
+            reply("Scrivi «Approfondisci X» indicando un argomento di massimo 100 caratteri.");
+            return;
+        }
+        FragCapabilities.Capability known = FragCapabilities.find(subject);
+        if (known != null) {
+            reply("🐸 APPROFONDIMENTO: " + known.key + "\n\nChe cosa faccio realmente:\n"
+                    + known.description + "\n\nEsempio: " + known.example
+                    + "\n\nLimiti: " + known.scope);
+            chat.logStage("Spiegazione tratta dal registro delle capacità installate.");
+            return;
+        }
+        int kind = FragNeuralTrainer.label(subject);
+        if (kind >= 0) {
+            String name = FragNeuralTrainer.LABELS[kind];
+            List<String> examples = trainingStore.samples(name, 4);
+            StringBuilder detail = new StringBuilder("🧠 APPROFONDIMENTO: " + subject)
+                .append("\nClasse neurale: ").append(name)
+                .append("\nEsempi etichettati conservati: ")
+                .append(trainingStore.countForLabel(name))
+                .append("\nLa rete è ")
+                .append(trainedModel==null ? "non addestrata" : "attualmente addestrata")
+                .append(" a classificare frasi nella categoria. Non possiede conoscenza approfondita dell'argomento.");
+            for (String item : examples) detail.append("\n• «").append(item).append("»");
+            if (examples.isEmpty()) detail.append("\nNon ci sono ancora esempi per questa categoria.");
+            reply(detail.toString());
+            chat.logStage("Esempi reali di training recuperati dal database.");
+            return;
+        }
+        List<FragResearch.Hit> sources = knowledge.findTopic(subject);
+        if (!sources.isEmpty()) {
+            StringBuilder explain = new StringBuilder("📚 APPROFONDIMENTO: ")
+                    .append(subject).append("\nHo questi frammenti realmente archiviati. ")
+                    .append("Non significa che li abbia assimilati nella rete neurale:");
+            for (FragResearch.Hit hit : sources)
+                explain.append("\n\n[")
+                   .append(hit.provider).append("] ").append(hit.title)
+                   .append("\n").append(hit.snippet).append("\n").append(hit.url);
+            reply(explain.toString());
+            chat.logStage("Fonte verificabile recuperata dalla memoria di ricerca.");
+            return;
+        }
+        FragNeuralTrainer.Model model = trainedModel;
+        if (model != null) {
+            FragNeuralTrainer.Prediction p = FragNeuralTrainer.predict(model, subject);
+            reply("🐸 «" + subject + "» non è una capacità descritta né un tema presente nella " +
+                    "memoria consultabile. Il mio classificatore associa la frase a «" +
+                    p.label + "» con punteggio softmax " +
+                    String.format(Locale.ITALY,"%.1f%%", p.score*100) +
+                    ", ma NON dimostra che conosca o capisca questo argomento. " +
+                    "Puoi insegnarmi esempi classificabili o cercare online.");
+        } else {
+            reply("🐸 Non conosco ancora «" + subject + "». Non trovo capacità o fonti salvate " +
+                    "per questo argomento e non ho un modello neurale addestrato. " +
+                    "Puoi cercare online o aggiungere esempi.");
+        }
+        chat.logStage("Ho segnalato esplicitamente i limiti della conoscenza locale.");
+    }
+
+    private void showBrainDialog(boolean detailed) {
+        FragNeuralTrainer.Model current = trainedModel;
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout content = new LinearLayout(this);
+        content.setBackgroundColor(0xFF101820);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(12), dp(12), dp(12), dp(16));
+        scroll.addView(content);
+        TextView intro = brainText(detailed ? "🐸 PSICOF RÅG — STRUTTURA REALE"
+                : "🐸 CERVELLO — MAPPA DELLA RETE", 17, 0xFF91F2BC);
+        content.addView(intro);
+        TextView stat = brainText(brainDetails(current), 12, 0xFFC3D9DD);
+        stat.setPadding(0, dp(8), 0, dp(10));
+        content.addView(stat);
+        FragBrainGraphView graph = new FragBrainGraphView(this);
+        openBrainGraph = graph;
+        openBrainStatus = stat;
+        graph.setView(current == null ? null : FragNeuralTrainer.inspect(current, brainInspection),
+                brainInspection, requestedNeurons);
+        content.addView(graph, new LinearLayout.LayoutParams(-1, dp(610)));
+
+        final EditText phrase = new EditText(this);
+        phrase.setSingleLine(true);
+        phrase.setText(brainInspection);
+        phrase.setTextColor(0xFFEFFFF8);
+        phrase.setHint("Inserisci una frase per osservare le attivazioni");
+        phrase.setHintTextColor(0xFFA5B4B8);
+        phrase.setTextSize(13);
+        content.addView(phrase, new LinearLayout.LayoutParams(-1, dp(55)));
+        Button inspect = new Button(this);
+        inspect.setText("Analizza questa frase / Aggiorna rete");
+        inspect.setOnClickListener(v -> {
+            brainInspection = phrase.getText().toString().trim();
+            liveBrainInspection = brainInspection;
+            FragNeuralTrainer.Model model = trainedModel;
+            graph.setView(model == null ? null : FragNeuralTrainer.inspect(model, brainInspection),
+                    brainInspection, requestedNeurons);
+            stat.setText(brainDetails(model));
+            chat.logStage("Psicofråg ha calcolato attivazioni dalla frase reale.");
+        });
+        content.addView(inspect);
+
+        TextView configTitle = brainText("MODELLA IL CERVELLO — PROSSIMO TRAINING", 13, 0xFFAAE5D2);
+        configTitle.setPadding(0,dp(14),0,0);
+        content.addView(configTitle);
+        TextView neuronsLabel = brainText("", 12, 0xFFDBF0E7);
+        content.addView(neuronsLabel);
+        SeekBar neurons = new SeekBar(this);
+        neurons.setMax(15);
+        neurons.setProgress(requestedNeurons / 8 - 1);
+        neuronsLabel.setText("Neuroni nascosti: " + requestedNeurons);
+        content.addView(neurons);
+        TextView epochsLabel = brainText("", 12, 0xFFDBF0E7);
+        content.addView(epochsLabel);
+        SeekBar epochs = new SeekBar(this);
+        epochs.setMax(19);
+        epochs.setProgress(requestedEpochs / 10 - 1);
+        epochsLabel.setText("Epoche di training: " + requestedEpochs);
+        content.addView(epochs);
+        neurons.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar,int value,boolean user) {
+                neuronsLabel.setText("Neuroni nascosti: " + ((value+1)*8));
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) {}
+            @Override public void onStopTrackingTouch(SeekBar bar) {}
+        });
+        epochs.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar,int value,boolean user) {
+                epochsLabel.setText("Epoche di training: " + ((value+1)*10));
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) {}
+            @Override public void onStopTrackingTouch(SeekBar bar) {}
+        });
+        Button save = new Button(this);
+        save.setText("Salva configurazione (non cambia i pesi)");
+        save.setOnClickListener(v -> setBrainConfig((neurons.getProgress()+1)*8,
+                                                   (epochs.getProgress()+1)*10));
+        content.addView(save);
+        Button train = new Button(this);
+        train.setText("🧠 Addestra e osserva LIVE");
+        train.setOnClickListener(v -> {
+            graph.clearLoss();
+            liveBrainInspection = phrase.getText().toString().trim();
+            brainInspection = liveBrainInspection;
+            launchTraining();
+        });
+        content.addView(train);
+        TextView note = brainText("N.B.: le linee mostrano SOLO pesi reali campionati; " +
+                "i totali si riferiscono all'intera rete. Ogni grafico è un calcolo " +
+                "effettivo della rete corrente, non una simulazione di pensieri. " +
+                "Nuovi neuroni nascono soltanto quando riaddestri con la nuova configurazione.",
+                11, 0xFFB7B6BE);
+        note.setPadding(0, dp(8),0,dp(12));
+        content.addView(note);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(scroll).setPositiveButton("Chiudi", (d, w) -> {})
+                .create();
+        dialog.setOnDismissListener(d -> {
+            if (openBrainGraph == graph) {
+                openBrainGraph = null;
+                openBrainStatus = null;
+            }
+        });
+        dialog.show();
+        if (dialog.getWindow()!=null)
+            dialog.getWindow().setLayout(
+                    LinearLayout.LayoutParams.MATCH_PARENT, (int)(getResources()
+                       .getDisplayMetrics().heightPixels * 0.83f));
+    }
+
+    private TextView brainText(String message, int size, int color) {
+        TextView view = new TextView(this);
+        view.setText(message); view.setTextSize(size); view.setTextColor(color);
+        return view;
+    }
+
+    private String brainDetails(FragNeuralTrainer.Model model) {
+        return "Fråg Neural Core V3: " + (model == null ? "NON ADDESTRATO" : "ADDESTRATO")
+            + "\nArchitettura effettiva: 384 input → " +
+             (model == null ? "—" : model.hidden.length) + " ReLU → 7 output"
+            + (model == null ? "\nConfigurazione richiesta: " + requestedNeurons +
+                " neuroni" : "\nCampioni d'allenamento: " + model.examples +
+                " · epoche: " + model.epochs +
+                "\nAccuratezza validazione: " +
+                String.format(Locale.ITALY,"%.1f%%",model.validationAccuracy*100))
+            + "\nEsempi locali: " + trainingStore.size() +
+              " · fonti recuperate: " + knowledge.sourceCount() +
+              "\nConfigurazione prossimo training: " + requestedNeurons +
+              " neuroni / " + requestedEpochs + " epoche" +
+              "\n7 classi UI fisse: button, title, text, input, card, login, dashboard.";
+    }
+
     private boolean handleTrainingRequest(String prompt) {
         String q = prompt.trim();
         String lower = q.toLowerCase(Locale.ROOT);
         if (lower.equals("aiuto training") || lower.equals("come ti alleno")
                 || lower.equals("trainer") || lower.equals("addestramento")) {
-            reply("🐸 Fråg Trainer V2 — vero addestramento neurale offline!\n\n" +
+            reply("🐸 Fråg Trainer V3 — addestramento neurale configurabile offline!\n\n" +
                 "1. «esempi base» carica 70 esempi etichettati.\n" +
                 "2. «insegna: metti un tasto Invia => pulsante» aggiunge un esempio.\n" +
                 "3. «importa dataset» apre un JSON o JSONL dal telefono.\n" +
@@ -201,7 +468,8 @@ public final class MainActivity extends Activity {
                 "6. «esegui AI: metti un tasto chiamato Invia» applica solo con alta confidenza.\n" +
                 "7. «statistiche training» mostra esempi e accuratezza su dati esclusi dall'allenamento.\n" +
                 "Etichette: pulsante, titolo, testo, campo, scheda, login, dashboard.\n" +
-                "È un classificatore neurale, non un LLM.");
+                "Nuovi: Cervello, Psicofråg, Lista cervello, Approfondisci X, Modella cervello 48 100.\n" +
+                "È un classificatore neurale a 7 classi, non un LLM.");
             chat.logStage("Istruzioni Trainer mostrate.");
             return true;
         }
@@ -287,16 +555,31 @@ public final class MainActivity extends Activity {
         trainerExecutor.execute(() -> {
             try {
                 List<FragNeuralTrainer.Example> examples = trainingStore.examples();
-                FragNeuralTrainer.Model trained = FragNeuralTrainer.train(examples,
-                        (epoch, total, loss) -> runOnUiThread(() -> {
-                            if (!isDestroyed()) chat.logStage("Epoca " + epoch + "/" + total
+                FragNeuralTrainer.Configuration cfg =
+                    new FragNeuralTrainer.Configuration(requestedNeurons, requestedEpochs);
+                FragNeuralTrainer.Model trained = FragNeuralTrainer.train(examples, cfg,
+                        (epoch, total, loss, currentModel) -> {
+                            String inspectedPhrase = liveBrainInspection;
+                            FragNeuralTrainer.Snapshot snapshot =
+                                FragNeuralTrainer.inspect(currentModel, inspectedPhrase);
+                            runOnUiThread(() -> {
+                                if (isDestroyed()) return;
+                                chat.logStage("Epoca " + epoch + "/" + total
                                     + " · loss " + String.format(Locale.US, "%.3f", loss));
-                        }));
+                                if (openBrainGraph != null)
+                                    openBrainGraph.addTrainingPoint(epoch, total, loss, snapshot);
+                            });
+                        });
                 trainingStore.saveModel(trained);
                 trainedModel = trained;
                 runOnUiThread(() -> {
                     if (!isDestroyed()) {
                         chat.logStage("Pesi addestrati e salvati sul dispositivo.");
+                        if (openBrainGraph != null) {
+                            openBrainGraph.setView(FragNeuralTrainer.inspect(
+                               trained,liveBrainInspection),liveBrainInspection,requestedNeurons);
+                            if (openBrainStatus != null) openBrainStatus.setText(brainDetails(trained));
+                        }
                         reply("✅ Fråg Neural Core addestrato: " + trained.examples +
                             " esempi, " + trained.epochs + " epoche. Accuratezza " +
                             "di validazione: " +
