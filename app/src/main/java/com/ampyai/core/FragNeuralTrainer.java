@@ -243,7 +243,7 @@ public final class FragNeuralTrainer {
     }
 
     public static Prediction predict(Model model, String text) {
-        float[] hidden = new float[HIDDEN];
+        float[] hidden = new float[model.hidden.length];
         float[] logits = new float[OUTPUTS];
         forward(model, vector(text), hidden, logits);
         float[] probabilities = softmax(logits);
