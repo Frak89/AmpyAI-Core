@@ -31,7 +31,7 @@ public final class FragNeuralTrainerTest {
         float original = initial.output[0][0];
         FragNeuralTrainer.Model trained = FragNeuralTrainer.train(examples, null);
         assertEquals(42, trained.examples);
-        assertEquals(65, trained.epochs);
+        assertEquals(70, trained.epochs);
         assertTrue(Float.isFinite(trained.output[0][0]));
         assertNotEquals(original, trained.output[0][0], 1e-8);
         assertTrue(trained.validationAccuracy >= 0.0);
@@ -42,6 +42,40 @@ public final class FragNeuralTrainerTest {
         assertTrue(prediction.score > 0);
         assertTrue(prediction.score <= 1);
         assertTrue(prediction.margin >= 0.0);
+    }
+
+    @Test public void supportsMultipleRealHiddenWidths() {
+        List<FragNeuralTrainer.Example> examples = new ArrayList<>();
+        for (int c = 0; c < FragNeuralTrainer.LABELS.length; c++)
+            for (int i = 0; i < 5; i++)
+                examples.add(new FragNeuralTrainer.Example(
+                    "frase specifica " + FragNeuralTrainer.LABELS[c] + " esempio " + i, c));
+        FragNeuralTrainer.Model model = FragNeuralTrainer.train(examples,
+                new FragNeuralTrainer.Configuration(48, 20), null);
+        assertEquals(48, model.hidden.length);
+        assertEquals(48, model.output[0].length);
+        assertEquals(20, model.epochs);
+        FragNeuralTrainer.Snapshot view = FragNeuralTrainer.inspect(model,
+                "crea pulsante Invia");
+        assertEquals(384, view.inputs);
+        assertEquals(48, view.hidden);
+        assertEquals(7, view.outputs);
+        assertEquals(14, view.hiddenIds.length);
+        assertEquals(7, view.outputProbabilities.length);
+        double sum=0.0;
+        for(float prob:view.outputProbabilities) sum+=prob;
+        assertEquals(1.0, sum, 0.0005);
+        for(int row=0; row<view.hiddenIds.length;row++){
+            for(int col=0; col<view.featureIds.length;col++){
+                assertEquals(model.hidden[view.hiddenIds[row]][view.featureIds[col]],
+                    view.inputWeights[row][col], 0.00001f);
+            }
+        }
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsUnsupportedTopology() {
+        new FragNeuralTrainer.Configuration(13, 70);
     }
 
     @Test(expected = IllegalArgumentException.class)
