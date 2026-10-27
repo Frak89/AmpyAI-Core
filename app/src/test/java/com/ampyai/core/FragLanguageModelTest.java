@@ -4,6 +4,21 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public final class FragLanguageModelTest {
+    @Test public void vocabularyWalkerFollowsNewWordsWithoutRepeatingKnown() {
+        java.util.List<String> lines=java.util.Arrays.asList(
+                "capacità di conservare e ricordare esperienze e concetti",
+                "la capacità di conservare conoscenza e concetti");
+        java.util.Set<String> known=new java.util.HashSet<>();
+        known.add("memoria");
+        java.util.List<String> first=FragVocabularyWalker.suggest(lines,known,4);
+        assertEquals(4,first.size());
+        assertFalse(first.contains("memoria"));
+        assertEquals("capacità",first.get(0));
+        known.addAll(first);
+        java.util.List<String> second=FragVocabularyWalker.suggest(lines,known,4);
+        for(String term:second)assertFalse(known.contains(term));
+    }
+
     @Test public void neuralLanguageReallyLearnsAndGenerates() {
         FragLanguageModel.Model original=new FragLanguageModel.Model();
         float old=original.output[0][0];

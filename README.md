@@ -65,3 +65,7 @@ Per evitare risposte inventate, `definisci X` usa soltanto definizioni veramente
 ### Build e verifica
 
 Il ramo `feature/frag-v3-language` estende `feature/frag-rev3` in modo separato. GitHub Actions compila e produce l'artifact `AmpyAI-Core-Frag-Rev3-Language-debug`; include anche test di apprendimento dei pesi e parser di definizioni con esempi sintetici. Nessuna telemetria esterna né API a pagamento.
+
+### Piccolo passo di esplorazione autonoma, ma circoscritta
+
+`cammina` (o `esplora dizionario`) esamina definizioni già salvate, sceglie **al massimo quattro nuove parole non ancora presenti** nel dizionario locale e tenta di recuperarne le definizioni dal Wikizionario. Al primo avvio usa parole iniziali neutre. Se ottiene definizioni nuove o cambiate, le salva con URL fonte e avvia addestramento incrementale del Language Core. Quando ripeti il comando, il candidato successivo può derivare dalle definizioni apprese precedentemente. Si tratta di una selezione euristica verificabile, **non** di comprensione o apprendimento autonomo illimitato. Non può navigare continuamente senza una nuova richiesta.

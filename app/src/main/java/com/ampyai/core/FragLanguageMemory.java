@@ -51,6 +51,20 @@ public final class FragLanguageMemory extends SQLiteOpenHelper {
             return c.moveToFirst() ? new String[]{c.getString(0),c.getString(1)} : null;
         }
     }
+    public synchronized String[] nextStudyTerms(int max) {
+        java.util.List<String> contexts=new java.util.ArrayList<>();
+        java.util.Set<String> known=new java.util.HashSet<>();
+        try(Cursor c=getReadableDatabase().rawQuery(
+                "SELECT term,meaning FROM definitions ORDER BY retrieved DESC LIMIT 50",null)) {
+            while(c.moveToNext()) {
+                known.add(c.getString(0));
+                contexts.add(c.getString(1));
+            }
+        }
+        java.util.List<String> candidates=FragVocabularyWalker.suggest(contexts,known,max);
+        return candidates.toArray(new String[0]);
+    }
+
     public synchronized int definitions() {
         try(Cursor c=getReadableDatabase().rawQuery("SELECT COUNT(*) FROM definitions",null)) {
             return c.moveToFirst()?c.getInt(0):0;

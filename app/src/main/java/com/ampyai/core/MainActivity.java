@@ -233,6 +233,7 @@ public final class MainActivity extends Activity {
                 "«allena linguaggio»: apprendimento incrementale dai testi memorizzati.\n" +
                 "«studia parola: memoria»: consulta Wikizionario e riaddestra il modello.\n" +
                 "«esplora dizionario»: studia poche parole pubbliche con fonti.\n" +
+                "«cammina»: prova nuove parole ricavate da definizioni già acquisite.\n" +
                 "«definisci memoria»: legge la definizione veramente salvata.\n" +
                 "«parla: ciao»: genera caratteri con la rete, senza risposte prefabbricate.\n" +
                 "«Psicofråg»: mostra anche il Language Core e i parametri reali.\n\n" +
@@ -274,8 +275,15 @@ public final class MainActivity extends Activity {
             studyDictionary(new String[]{word.group(1).trim()});
             return true;
         }
-        if(low.equals("esplora dizionario") || low.equals("impara dal dizionario")) {
-            studyDictionary(new String[]{"parola","mente","memoria","linguaggio"});
+        if(low.equals("esplora dizionario") || low.equals("impara dal dizionario")
+                || low.equals("cammina") || low.equals("fråg cammina")
+                || low.equals("cammina fråg")) {
+            String[] next = languageMemory.nextStudyTerms(4);
+            if(next.length==0)reply("Non ho altre parole candidate per questa sessione.");
+            else {
+                chat.logStage("Passo di esplorazione: "+String.join(", ",next));
+                studyDictionary(next);
+            }
             return true;
         }
         Matcher define=Pattern.compile("^definisci\\s+(.+)$",
@@ -389,9 +397,12 @@ public final class MainActivity extends Activity {
             for(String term:terms) {
                 try {
                     FragWiktionaryTutor.Definition def=FragWiktionaryTutor.fetch(term);
+                    String[] existing=languageMemory.definition(def.word);
                     languageMemory.saveDefinition(def.word,def.meaning,def.source);
-                    languageMemory.saveText(def.word+": "+def.meaning+".","Wikizionario: "+def.source);
-                    saved++;
+                    if(existing==null || !existing[0].equals(def.meaning)) {
+                        languageMemory.saveText(def.word+": "+def.meaning+".","Wikizionario: "+def.source);
+                        saved++;
+                    }
                     runOnUiThread(()-> {
                         if(!isDestroyed()) {
                             chat.logStage("Definizione Wikizionario registrata: "+def.word);
