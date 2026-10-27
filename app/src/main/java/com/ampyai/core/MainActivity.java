@@ -52,6 +52,13 @@ public final class MainActivity extends Activity {
     private LinearLayout root;
     private FragBrain brain;
     private FragKnowledgeStore knowledge;
+    private FragLanguageMemory languageMemory;
+    private volatile FragLanguageModel.Model languageModel;
+    private FragLanguageGraphView openLanguageGraph;
+    private TextView openLanguageStatus;
+    private final ExecutorService languageExecutor = Executors.newSingleThreadExecutor();
+    private final AtomicBoolean languageBusy = new AtomicBoolean(false);
+
     private FragBrainGraphView openBrainGraph;
     private TextView openBrainStatus;
     private String brainInspection = "crea un pulsante con scritto Salva";
@@ -79,6 +86,10 @@ public final class MainActivity extends Activity {
         document = UiDocument.parse(preferences.getString("canvas", null));
         brain = new FragBrain(preferences);
         knowledge = new FragKnowledgeStore(getApplicationContext());
+        languageMemory = new FragLanguageMemory(getApplicationContext());
+        try { languageModel = languageMemory.loadModel(); }
+        catch(IOException ignored) { languageModel = null; }
+
         requestedNeurons = preferences.getInt("frag_v3_neurons", 32);
         requestedEpochs = preferences.getInt("frag_v3_epochs", 70);
         trainingStore = new FragTrainingStore(getApplicationContext());
@@ -144,6 +155,9 @@ public final class MainActivity extends Activity {
         chat.restore(preferences.getString("chat", null));
         if (trainedModel != null) chat.logStage(
                 "Neural Core caricato: " + trainedModel.examples + " esempi.");
+        if (languageModel != null)
+            chat.logStage("Language Core recuperato: " + languageModel.sessions +
+                    " sessioni, " + languageModel.charactersSeen + " caratteri elaborati.");
         root.addView(chat, new LinearLayout.LayoutParams(-1, dp(366)));
         chat.setVisibility(View.GONE);
         developerButton.setOnClickListener(v -> {
@@ -160,6 +174,7 @@ public final class MainActivity extends Activity {
         saveChat();
         chat.logStage("Interpreto: " + shortText(prompt));
         if (handleBrainRequest(prompt)) return;
+        if (handleLanguageRequest(prompt)) return;
         if (handleTrainingRequest(prompt)) return;
         if (prompt.equalsIgnoreCase("annulla") || prompt.equalsIgnoreCase("undo")) {
             cancelPendingProposal();
@@ -182,10 +197,11 @@ public final class MainActivity extends Activity {
             case HELP:
                 reply("Sono Fråg 🐸, una AI simbolica locale sperimentale: " +
                       "interpreto comandi, faccio anteprime, registro preferenze " +
-                      "e cerco fonti online verificabili. Fråg V2 include anche una piccola " +
-                      "rete neurale da addestrare sul dispositivo (non è un LLM). " +
-                      "Prova: Cervello, Psicofråg, Lista cervello, Approfondisci pulsante, " +
-                      "esempi base, allena Fråg, Modella cervello 48 100.");
+                      "e cerco fonti online verificabili. In V3 ho due reti separate: " +
+                      "un classificatore UI e un piccolo modello linguistico che genera " +
+                      "caratteri autoregressivamente (NON è un LLM). " +
+                      "Prova: inizia linguaggio, studia parola: memoria, " +
+                      "allena linguaggio, parla: ciao, Psicofråg, Lista cervello.");
                 chat.logStage("Ho spiegato le capacità disponibili.");
                 break;
             case STYLE:
@@ -201,6 +217,213 @@ public final class MainActivity extends Activity {
      * The trainer is opt-in. All manual labels and imported datasets are stored
      * privately. There is no hidden scraping or remote training service.
      */
+
+    /**
+     * Primitive generative core: explicit local training and bounded, explicit
+     * dictionary lessons. The internet is never silently crawled.
+     */
+    private boolean handleLanguageRequest(String prompt) {
+        String trimmed=prompt.trim();
+        String low=trimmed.toLowerCase(Locale.ITALIAN);
+        if (low.equals("aiuto linguaggio") || low.equals("aiuto lingua") ||
+            low.equals("linguaggio")) {
+            reply("🐸 LANGUAGE CORE V3 — rete neurale generativa da zero.\n\n" +
+                "«inizia linguaggio»: prepara un piccolo corpus italiano e lo addestra.\n" +
+                "«insegna lingua: ...»: aggiunge testo al corpus, non riaddestra ancora.\n" +
+                "«allena linguaggio»: apprendimento incrementale dai testi memorizzati.\n" +
+                "«studia parola: memoria»: consulta Wikizionario e riaddestra il modello.\n" +
+                "«esplora dizionario»: studia poche parole pubbliche con fonti.\n" +
+                "«definisci memoria»: legge la definizione veramente salvata.\n" +
+                "«parla: ciao»: genera caratteri con la rete, senza risposte prefabbricate.\n" +
+                "«Psicofråg»: mostra anche il Language Core e i parametri reali.\n\n" +
+                "ATTENZIONE: è un piccolo modello autoregressivo a contesto di 4 caratteri; " +
+                "all'inizio parlerà spesso in modo incomprensibile.");
+            return true;
+        }
+        if (low.equals("inizia linguaggio") || low.equals("inizializza linguaggio")) {
+            if (languageMemory.texts()==0) {
+                languageMemory.saveText(FragLanguageSeeds.TEXT,"seed_locale");
+                chat.logStage("Inserito corpus iniziale originale italiano.");
+            }
+            launchLanguageTraining();
+            return true;
+        }
+        Matcher teach=Pattern.compile("^insegna\\s+lingua\\s*:\\s*(.+)$",
+                Pattern.CASE_INSENSITIVE|Pattern.UNICODE_CASE|Pattern.DOTALL).matcher(trimmed);
+        if (teach.matches()) {
+            String statement=teach.group(1).trim();
+            if(statement.length()<10 || statement.length()>1000) {
+                reply("Scrivi una frase di almeno 10 e massimo 1000 caratteri.");
+            } else if (languageBusy.get()) {
+                reply("Aspetta che termini la lezione attuale.");
+            } else {
+                languageMemory.saveText(statement,"utente");
+                reply("📘 Ho salvato un nuovo testo. Corpus: " + languageMemory.texts() +
+                    " documenti. Per incorporarlo nei pesi usa «allena linguaggio».");
+            }
+            return true;
+        }
+        if (low.equals("allena linguaggio")||low.equals("allena lingua")||
+            low.equals("addestra linguaggio")) {
+            launchLanguageTraining();
+            return true;
+        }
+        Matcher word=Pattern.compile("^(?:studia\\s+parola|impara\\s+parola)\\s*:\\s*(.+)$",
+                Pattern.CASE_INSENSITIVE|Pattern.UNICODE_CASE).matcher(trimmed);
+        if(word.matches()) {
+            studyDictionary(new String[]{word.group(1).trim()});
+            return true;
+        }
+        if(low.equals("esplora dizionario") || low.equals("impara dal dizionario")) {
+            studyDictionary(new String[]{"parola","mente","memoria","linguaggio"});
+            return true;
+        }
+        Matcher define=Pattern.compile("^definisci\\s+(.+)$",
+                Pattern.CASE_INSENSITIVE|Pattern.UNICODE_CASE).matcher(trimmed);
+        if(define.matches()) {
+            String wordName=define.group(1).trim();
+            String[] learned=languageMemory.definition(wordName);
+            reply(learned==null?
+                "Non ho ancora la definizione verificata di «"+wordName+
+                   "». Scrivi «studia parola: "+wordName+"» per cercarla online.":
+                "📖 "+wordName+": "+learned[0]+"\nFonte: "+learned[1]+
+                "\nQuesta è una definizione recuperata, non inventata dalla rete.");
+            return true;
+        }
+        Matcher speak=Pattern.compile("^(?:parla|genera\\s+testo|continua\\s+frase)\\s*:\\s*(.+)$",
+                Pattern.CASE_INSENSITIVE|Pattern.UNICODE_CASE|Pattern.DOTALL).matcher(trimmed);
+        if(speak.matches()) {
+            FragLanguageModel.Model model=languageModel;
+            if(model==null)reply("Il Language Core non è addestrato. Usa «inizia linguaggio».");
+            else {
+                String promptPart=speak.group(1);
+                String generated=FragLanguageModel.generate(model,promptPart,150,
+                        System.nanoTime());
+                reply("🐸 Continuazione neurale grezza (nessuna risposta prefabbricata):\n"
+                    +promptPart+" "+generated+"\n\nLa rete usa soltanto gli ultimi 4 caratteri " +
+                    "del contesto: per ora può produrre frasi insensate.");
+                chat.logStage("Generazione carattere per carattere completata.");
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private void launchLanguageTraining() {
+        if (!languageBusy.compareAndSet(false,true)) {
+            reply("Il Language Core sta già studiando o addestrandosi.");
+            return;
+        }
+        String corpus=languageMemory.corpus(6500);
+        if(corpus.length()<80) {
+            languageBusy.set(false);
+            reply("Corpus insufficiente. Usa «inizia linguaggio» o insegna alcune frasi.");
+            return;
+        }
+        reply("🧠 Avvio apprendimento linguistico sui testi locali. Log LIVE delle epoche...");
+        languageExecutor.execute(() -> {
+            try {
+                runLanguageTraining(corpus);
+            } finally {
+                languageBusy.set(false);
+            }
+        });
+    }
+
+    private void runLanguageTraining(String corpus) {
+        try {
+            FragLanguageModel.Model initial=languageModel;
+            FragLanguageModel.Model working=initial==null
+                    ? new FragLanguageModel.Model() : FragLanguageModel.copy(initial);
+            FragLanguageModel.Model updated=FragLanguageModel.train(working,corpus,6,
+                (epoch, total, loss, snapshot)->runOnUiThread(()-> {
+                    if(isDestroyed())return;
+                    chat.logStage("Language Core epoca "+epoch+"/"+total+
+                        " · loss "+String.format(Locale.ITALY,"%.3f",loss));
+                    if (openLanguageGraph!=null)
+                        openLanguageGraph.display(snapshot,liveBrainInspection);
+                    if (openLanguageStatus!=null)
+                        openLanguageStatus.setText("Language Core: training " + epoch+"/"+total+
+                            " · loss "+String.format(Locale.ITALY,"%.3f",loss)+
+                            "\n"+FragLanguageModel.parameterCount()+" parametri");
+                }));
+            languageMemory.saveModel(updated);
+            languageModel=updated;
+            runOnUiThread(()->{
+                if(isDestroyed())return;
+                chat.logStage("Nucleo linguistico addestrato; pesi salvati offline.");
+                reply("✅ Language Core aggiornato. Sessioni: "+updated.sessions+
+                    ". Caratteri elaborati cumulativi: "+updated.charactersSeen+
+                    ". Loss media ultimo training: "+
+                    String.format(Locale.ITALY,"%.3f",updated.lastLoss)+
+                    ".\nProva «parla: ciao» o «Psicofråg». Il linguaggio resta primitivo.");
+                if(openLanguageGraph!=null)
+                    openLanguageGraph.display(updated,liveBrainInspection);
+                if(openLanguageStatus!=null)
+                    openLanguageStatus.setText(languageDetails());
+            });
+        } catch(Exception ex) {
+            runOnUiThread(()->{
+                if(!isDestroyed()) {
+                    chat.logStage("Training linguistico interrotto: "+ex.getClass().getSimpleName());
+                    reply("Non sono riuscito ad allenare il Language Core: "+ex.getMessage());
+                }
+            });
+        }
+    }
+
+    private void studyDictionary(String[] terms) {
+        if(!languageBusy.compareAndSet(false,true)) {
+            reply("Fråg sta già imparando: non avvio un secondo studio contemporaneamente.");
+            return;
+        }
+        reply("📖 Leggo il Wikizionario in italiano per "+terms.length+
+            " parola/e. Salverò soltanto definizioni realmente recuperate e le loro fonti.");
+        network.execute(()->{
+            int saved=0;
+            for(String term:terms) {
+                try {
+                    FragWiktionaryTutor.Definition def=FragWiktionaryTutor.fetch(term);
+                    languageMemory.saveDefinition(def.word,def.meaning,def.source);
+                    languageMemory.saveText(def.word+": "+def.meaning+".","Wikizionario: "+def.source);
+                    saved++;
+                    runOnUiThread(()-> {
+                        if(!isDestroyed()) {
+                            chat.logStage("Definizione Wikizionario registrata: "+def.word);
+                            reply("📖 "+def.word+": "+def.meaning+"\nFonte (Wikizionario, CC BY-SA): "+def.source);
+                        }
+                    });
+                } catch(Exception e) {
+                    runOnUiThread(()-> {
+                        if(!isDestroyed())chat.logStage("Definizione non caricata per «"+term+
+                            "»: "+e.getClass().getSimpleName());
+                    });
+                }
+            }
+            final int added=saved;
+            if(added==0) {
+                languageBusy.set(false);
+                runOnUiThread(()->{
+                    if(!isDestroyed())reply("Nessuna definizione italiana utilizzabile recuperata. " +
+                            "Non ho modificato il modello; verifica la rete o prova un'altra parola.");
+                });
+                return;
+            }
+            String corpus=languageMemory.corpus(6500);
+            languageExecutor.execute(()->{
+                try {
+                    runOnUiThread(()->{
+                        if(!isDestroyed())chat.logStage("Lezioni recuperate: "+added+
+                            ". Avvio training incrementale con corpus locale.");
+                    });
+                    runLanguageTraining(corpus);
+                } finally {
+                    languageBusy.set(false);
+                }
+            });
+        });
+    }
+
     private boolean handleBrainRequest(String prompt) {
         String raw = prompt.trim();
         String normal = raw.toLowerCase(Locale.ROOT);
@@ -264,6 +487,13 @@ public final class MainActivity extends Activity {
     private void explainKnowledge(String subject) {
         if (subject.isEmpty() || subject.length() > 100) {
             reply("Scrivi «Approfondisci X» indicando un argomento di massimo 100 caratteri.");
+            return;
+        }
+        String[] storedDefinition = languageMemory.definition(subject);
+        if (storedDefinition != null) {
+            reply("📖 «" + subject + "»\n" + storedDefinition[0] +
+                    "\n\nFonte: " + storedDefinition[1] +
+                    "\nDefinizione conservata in memoria, non dimostrazione di comprensione neurale.");
             return;
         }
         FragCapabilities.Capability known = FragCapabilities.find(subject);
@@ -341,6 +571,14 @@ public final class MainActivity extends Activity {
         graph.setView(current == null ? null : FragNeuralTrainer.inspect(current, brainInspection),
                 brainInspection, requestedNeurons);
         content.addView(graph, new LinearLayout.LayoutParams(-1, dp(610)));
+        TextView languageInfo = brainText(languageDetails(),12,0xFFA8E1CC);
+        languageInfo.setPadding(0,dp(12),0,dp(8));
+        openLanguageStatus=languageInfo;
+        content.addView(languageInfo);
+        FragLanguageGraphView languageView=new FragLanguageGraphView(this);
+        openLanguageGraph=languageView;
+        languageView.display(languageModel, brainInspection);
+        content.addView(languageView,new LinearLayout.LayoutParams(-1,dp(338)));
 
         final EditText phrase = new EditText(this);
         phrase.setSingleLine(true);
@@ -359,6 +597,8 @@ public final class MainActivity extends Activity {
             graph.setView(model == null ? null : FragNeuralTrainer.inspect(model, brainInspection),
                     brainInspection, requestedNeurons);
             stat.setText(brainDetails(model));
+            languageView.display(languageModel,brainInspection);
+            languageInfo.setText(languageDetails());
             chat.logStage("Psicofråg ha calcolato attivazioni dalla frase reale.");
         });
         content.addView(inspect);
@@ -423,6 +663,8 @@ public final class MainActivity extends Activity {
             if (openBrainGraph == graph) {
                 openBrainGraph = null;
                 openBrainStatus = null;
+                openLanguageGraph = null;
+                openLanguageStatus = null;
             }
         });
         dialog.show();
@@ -436,6 +678,21 @@ public final class MainActivity extends Activity {
         TextView view = new TextView(this);
         view.setText(message); view.setTextSize(size); view.setTextColor(color);
         return view;
+    }
+
+    private String languageDetails() {
+        FragLanguageModel.Model current=languageModel;
+        return "🐸 Language Core: " + (current==null?"NON ADDESTRATO":"ADDESTRATO") +
+            "\nArchitettura: " + (FragLanguageModel.CONTEXT*FragLanguageModel.VOCAB) +
+            " ingressi contestuali → 64 neuroni ReLU → " + FragLanguageModel.VOCAB +
+            " caratteri di uscita" +
+            "\nParametri addestrabili: " + FragLanguageModel.parameterCount() +
+            "\nDefinizioni conservate: " + languageMemory.definitions() +
+            " · testi acquisiti: " + languageMemory.texts() +
+            (current==null ? "" : "\nSessioni training: " + current.sessions +
+                " · caratteri elaborati: " + current.charactersSeen +
+                " · ultima loss: " + String.format(Locale.ITALY,"%.3f",current.lastLoss)) +
+            "\nIl modello genera testo carattere per carattere; NON comprende ancora concetti complessi.";
     }
 
     private String brainDetails(FragNeuralTrainer.Model model) {
@@ -697,8 +954,18 @@ public final class MainActivity extends Activity {
             if (result != null) break;
         }
         if (result == null) {
-            reply("Per ora capisco comandi UI guidati, ricerche esplicite e stili. " +
-                  "Scrivi «aiuto», «proponi uno stile» o «cerca online design system».");
+            FragLanguageModel.Model language = languageModel;
+            if (language != null && prompt.length() < 200) {
+                String output = FragLanguageModel.generate(language,prompt,140,
+                        System.nanoTime());
+                reply("🐸 Language Core (testo generato, sperimentale):\n" + output
+                    + "\n\nNon rappresenta ancora una risposta ragionata. " +
+                    "Puoi insegnarmi frasi o definizioni e riaddestrarmi.");
+                chat.logStage("Continuazione neurale: campionamento autoregressivo reale.");
+            } else {
+                reply("Per ora capisco comandi UI guidati, ricerche esplicite e stili. " +
+                  "Per attivare la generazione neurale scrivi «inizia linguaggio».");
+            }
             chat.logStage("Richiesta non riconosciuta: nessuna modifica.");
             return;
         }
@@ -879,6 +1146,8 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         network.shutdownNow();
+        languageExecutor.shutdownNow();
+        languageMemory.close();
         trainerExecutor.shutdownNow();
         trainingStore.close();
         knowledge.close();
