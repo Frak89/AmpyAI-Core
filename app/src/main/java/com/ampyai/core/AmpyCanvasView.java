@@ -21,6 +21,7 @@ public final class AmpyCanvasView extends ScrollView {
     private final LinearLayout elements;
     private final Consumer<JSONObject> onTapped;
     private final Runnable onEdited;
+    private boolean brightBackground;
 
     public AmpyCanvasView(Context context, Consumer<JSONObject> onTapped, Runnable onEdited) {
         super(context);
@@ -36,7 +37,9 @@ public final class AmpyCanvasView extends ScrollView {
     }
 
     public void render(UiDocument document) {
-        setBackgroundColor(document.background());
+        int color = document.background();
+        brightBackground = (Color.red(color) * 299 + Color.green(color) * 587 + Color.blue(color) * 114) / 1000 > 170;
+        setBackgroundColor(color);
         elements.removeAllViews();
         for (int i = 0; i < document.nodes().length(); i++) {
             JSONObject item = document.nodes().optJSONObject(i);
@@ -84,7 +87,7 @@ public final class AmpyCanvasView extends ScrollView {
                 break;
             }
             case "title": {
-                TextView heading = label(title, 29, Color.WHITE, Typeface.BOLD);
+                TextView heading = label(title, 29, brightBackground ? 0xFF18202E : Color.WHITE, Typeface.BOLD);
                 heading.setPadding(0, dp(4), 0, dp(10));
                 heading.setOnClickListener(v -> onTapped.accept(item));
                 view = heading;
@@ -108,7 +111,7 @@ public final class AmpyCanvasView extends ScrollView {
                 break;
             }
             default: {
-                TextView text = label(title, 17, 0xFFE9EDF7, Typeface.NORMAL);
+                TextView text = label(title, 17, brightBackground ? 0xFF202938 : 0xFFE9EDF7, Typeface.NORMAL);
                 text.setPadding(0, dp(7), 0, dp(7));
                 text.setOnClickListener(v -> onTapped.accept(item));
                 view = text;
