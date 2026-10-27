@@ -93,7 +93,7 @@ public final class FragResearch {
                     if (out.size() + n > max) throw new IOException("Result too large");
                     out.write(bytes, 0, n);
                 }
-                return new JSONObject(out.toString(StandardCharsets.UTF_8.name()));
+                return new JSONObject(out.toString("UTF-8"));
             } catch (org.json.JSONException invalid) {
                 throw new IOException("Invalid JSON", invalid);
             }
