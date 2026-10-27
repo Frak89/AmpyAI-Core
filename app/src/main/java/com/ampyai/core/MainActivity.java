@@ -3,6 +3,8 @@ package com.ampyai.core;
 import android.app.Activity;
 import android.content.SharedPreferences;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.Typeface;
@@ -22,6 +24,12 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -39,6 +47,11 @@ public final class MainActivity extends Activity {
     private LinearLayout root;
     private FragBrain brain;
     private FragKnowledgeStore knowledge;
+    private FragTrainingStore trainingStore;
+    private volatile FragNeuralTrainer.Model trainedModel;
+    private static final int REQUEST_DATASET = 1027;
+    private final ExecutorService trainerExecutor = Executors.newSingleThreadExecutor();
+    private final AtomicBoolean training = new AtomicBoolean(false);
     private final FragResearch research = new FragResearch();
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     private final AtomicBoolean searching = new AtomicBoolean(false);
@@ -55,6 +68,12 @@ public final class MainActivity extends Activity {
         document = UiDocument.parse(preferences.getString("canvas", null));
         brain = new FragBrain(preferences);
         knowledge = new FragKnowledgeStore(getApplicationContext());
+        trainingStore = new FragTrainingStore(getApplicationContext());
+        try {
+            trainedModel = trainingStore.loadModel();
+        } catch (IOException ignored) {
+            trainedModel = null;
+        }
         modules.add(new BasicUiModule());
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         getWindow().setStatusBarColor(Color.TRANSPARENT);
@@ -110,6 +129,8 @@ public final class MainActivity extends Activity {
         root.addView(canvas, new LinearLayout.LayoutParams(-1, 0, 1f));
         chat = new AmpyDevChatView(this, this::onPrompt, this::onFeedback, this::closeChat);
         chat.restore(preferences.getString("chat", null));
+        if (trainedModel != null) chat.logStage(
+                "Neural Core caricato: " + trainedModel.examples + " esempi.");
         root.addView(chat, new LinearLayout.LayoutParams(-1, dp(366)));
         chat.setVisibility(View.GONE);
         developerButton.setOnClickListener(v -> {
@@ -125,6 +146,7 @@ public final class MainActivity extends Activity {
         chat.append("Tu", prompt);
         saveChat();
         chat.logStage("Interpreto: " + shortText(prompt));
+        if (handleTrainingRequest(prompt)) return;
         if (prompt.equalsIgnoreCase("annulla") || prompt.equalsIgnoreCase("undo")) {
             cancelPendingProposal();
             if (undo.isEmpty()) reply("Non ci sono modifiche da annullare.");
@@ -146,9 +168,10 @@ public final class MainActivity extends Activity {
             case HELP:
                 reply("Sono Fråg 🐸, una AI simbolica locale sperimentale: " +
                       "interpreto comandi, faccio anteprime, registro preferenze " +
-                      "e cerco fonti online verificabili. Non sono ancora un modello linguistico neurale. " +
-                      "Prova: proponi uno stile, crea dashboard stile cyberpunk, " +
-                      "cerca online material design, crea pulsante Salva, aiuto.");
+                      "e cerco fonti online verificabili. Fråg V2 include anche una piccola " +
+                      "rete neurale da addestrare sul dispositivo (non è un LLM). " +
+                      "Prova: esempi base, allena Fråg, prova AI: crea un tasto, " +
+                      "aiuto training, proponi uno stile, cerca online material design.");
                 chat.logStage("Ho spiegato le capacità disponibili.");
                 break;
             case STYLE:
@@ -157,6 +180,228 @@ public final class MainActivity extends Activity {
             default:
                 processBasicCommand(prompt);
         }
+    }
+
+
+    /**
+     * The trainer is opt-in. All manual labels and imported datasets are stored
+     * privately. There is no hidden scraping or remote training service.
+     */
+    private boolean handleTrainingRequest(String prompt) {
+        String q = prompt.trim();
+        String lower = q.toLowerCase(Locale.ROOT);
+        if (lower.equals("aiuto training") || lower.equals("come ti alleno")
+                || lower.equals("trainer") || lower.equals("addestramento")) {
+            reply("🐸 Fråg Trainer V2 — vero addestramento neurale offline!\n\n" +
+                "1. «esempi base» carica 70 esempi etichettati.\n" +
+                "2. «insegna: metti un tasto Invia => pulsante» aggiunge un esempio.\n" +
+                "3. «importa dataset» apre un JSON o JSONL dal telefono.\n" +
+                "4. «allena Fråg» aggiorna i pesi e mostra epoche e perdita LIVE.\n" +
+                "5. «prova AI: inserisci un bottone con scritto Conferma» testa senza cambiare UI.\n" +
+                "6. «esegui AI: metti un tasto chiamato Invia» applica solo con alta confidenza.\n" +
+                "7. «statistiche training» mostra esempi e accuratezza su dati esclusi dall'allenamento.\n" +
+                "Etichette: pulsante, titolo, testo, campo, scheda, login, dashboard.\n" +
+                "È un classificatore neurale, non un LLM.");
+            chat.logStage("Istruzioni Trainer mostrate.");
+            return true;
+        }
+        if (lower.equals("esempi base") || lower.equals("carica esempi base")
+                || lower.equals("prepara esempi")) {
+            int added = trainingStore.seed();
+            reply("📘 Esempi di base: " + added + " nuovi. Archivio: "
+                    + trainingStore.size() + " esempi. Ora scrivi «allena Fråg».");
+            chat.logStage("Dataset iniziale aggiornato.");
+            return true;
+        }
+        if (lower.equals("statistiche training") || lower.equals("stato training")
+                || lower.equals("statistiche ai")) {
+            FragNeuralTrainer.Model model = trainedModel;
+            reply("📊 Fråg Neural Core\nEsempi archiviati: " + trainingStore.size()
+                    + "\nModello addestrato: " + (model == null ? "no" : "sì")
+                    + (model == null ? "" : "\nEsempi nell'ultimo training: " + model.examples
+                    + "\nEpoche: " + model.epochs
+                    + "\nAccuratezza di validazione: " +
+                    String.format(Locale.ITALY, "%.1f%%", model.validationAccuracy * 100.0))
+                    + "\nLa valutazione usa esempi separati dal training; non misura capacità linguistiche generali.");
+            return true;
+        }
+        Matcher label = Pattern.compile("^insegna\\s*:\\s*(.+?)\\s*=>\\s*(\\S+)\\s*$",
+                Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(q);
+        if (label.matches()) {
+            if (training.get()) {
+                reply("Sto già allenando. Insegna nuovi esempi alla fine dell'addestramento.");
+                return true;
+            }
+            int kind = FragNeuralTrainer.label(label.group(2));
+            if (kind == -1) reply("Etichetta non valida. Usa pulsante, titolo, testo, campo, scheda, login o dashboard.");
+            else {
+                boolean inserted = trainingStore.add(label.group(1), label.group(2), "manual");
+                reply(inserted ? "✅ Esempio aggiunto per «" +
+                        FragNeuralTrainer.LABELS[kind] + "». Esempi totali: " +
+                        trainingStore.size() + "." : "Esempio duplicato o troppo corto/lungo.");
+                chat.logStage("Dataset locale aggiornato.");
+            }
+            return true;
+        }
+        if (lower.equals("importa dataset") || lower.equals("importa esempi")) {
+            if (training.get()) {
+                reply("Completa prima l'allenamento in corso.");
+                return true;
+            }
+            Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            picker.setType("*/*");
+            picker.addCategory(Intent.CATEGORY_OPENABLE);
+            picker.putExtra(Intent.EXTRA_MIME_TYPES,
+                    new String[]{"application/json", "application/x-ndjson",
+                            "text/plain", "application/octet-stream"});
+            try {
+                startActivityForResult(picker, REQUEST_DATASET);
+                chat.logStage("In attesa di un file JSON/JSONL scelto dall'utente.");
+            } catch (Exception e) {
+                reply("Selettore file non disponibile.");
+            }
+            return true;
+        }
+        if (lower.equals("allena fråg") || lower.equals("allena frag")
+                || lower.equals("avvia training") || lower.equals("addestra fråg")) {
+            launchTraining();
+            return true;
+        }
+        Matcher test = Pattern.compile("^(prova ai|esegui ai)\\s*:\\s*(.+)$",
+                Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(q);
+        if (test.matches()) {
+            predictInstruction(test.group(2).trim(),
+                    test.group(1).equalsIgnoreCase("esegui ai"));
+            return true;
+        }
+        return false;
+    }
+
+    private void launchTraining() {
+        if (!training.compareAndSet(false, true)) {
+            reply("Fråg si sta già allenando.");
+            return;
+        }
+        chat.logStage("Preparo dataset e split di validazione.");
+        reply("🧠 Training neurale locale avviato. Osserva epoche e perdita nel pannello LIVE.");
+        trainerExecutor.execute(() -> {
+            try {
+                List<FragNeuralTrainer.Example> examples = trainingStore.examples();
+                FragNeuralTrainer.Model trained = FragNeuralTrainer.train(examples,
+                        (epoch, total, loss) -> runOnUiThread(() -> {
+                            if (!isDestroyed()) chat.logStage("Epoca " + epoch + "/" + total
+                                    + " · loss " + String.format(Locale.US, "%.3f", loss));
+                        }));
+                trainingStore.saveModel(trained);
+                trainedModel = trained;
+                runOnUiThread(() -> {
+                    if (!isDestroyed()) {
+                        chat.logStage("Pesi addestrati e salvati sul dispositivo.");
+                        reply("✅ Fråg Neural Core addestrato: " + trained.examples +
+                            " esempi, " + trained.epochs + " epoche. Accuratezza " +
+                            "di validazione: " +
+                            String.format(Locale.ITALY, "%.1f%%", trained.validationAccuracy * 100)
+                            + ".\nProva ora «prova AI: ...». Questo punteggio vale " +
+                            "solo per il piccolo dataset di richieste UI.");
+                    }
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    if (!isDestroyed()) {
+                        chat.logStage("Allenamento non completato.");
+                        reply("Training non riuscito: " + error.getMessage()
+                            + "\nProva prima «esempi base».");
+                    }
+                });
+            } finally {
+                training.set(false);
+            }
+        });
+    }
+
+    private void predictInstruction(String instruction, boolean execute) {
+        FragNeuralTrainer.Model model = trainedModel;
+        if (model == null) {
+            reply("Devo prima essere addestrato. Scrivi «esempi base» e «allena Fråg».");
+            return;
+        }
+        FragNeuralTrainer.Prediction prediction = FragNeuralTrainer.predict(model, instruction);
+        String score = String.format(Locale.ITALY, "%.1f%%", prediction.score * 100);
+        chat.logStage("Rete neurale: " + prediction.label + " · " + score + ".");
+        if (!execute) {
+            reply("🐸 Classificazione neurale\nTesto: " + instruction
+                + "\nIntento: " + prediction.label + "\nPunteggio softmax: " + score
+                + "\nMargine sul secondo intento: "
+                + String.format(Locale.ITALY, "%.1f%%", prediction.margin * 100)
+                + "\nÈ una previsione sperimentale: può sbagliare.");
+            return;
+        }
+        if (prediction.score < 0.75 || prediction.margin < 0.30) {
+            reply("⚠ Fråg non è abbastanza sicuro per modificare il canvas (" + score +
+                    "). Insegnami la frase con «insegna: ... => etichetta», poi riallenami.");
+            return;
+        }
+        String command;
+        if (prediction.label.equals("login")) command = "crea schermata login";
+        else if (prediction.label.equals("dashboard")) command = "crea dashboard";
+        else {
+            String label = extractDisplayText(instruction);
+            if (label.isEmpty()) {
+                reply("Ho riconosciuto «" + prediction.label + "», ma manca il testo esatto. "
+                    + "Prova «esegui AI: metti un pulsante con scritto Conferma».");
+                return;
+            }
+            String type = prediction.label.equals("button") ? "pulsante" :
+                prediction.label.equals("input") ? "campo" :
+                prediction.label.equals("card") ? "scheda" :
+                prediction.label.equals("title") ? "titolo" : "testo";
+            command = "crea " + type + " " + label;
+        }
+        chat.logStage("Applico comando UI riconosciuto: " + shortText(command));
+        processBasicCommand(command);
+    }
+
+    private String extractDisplayText(String instruction) {
+        Matcher m = Pattern.compile(
+                "(?:con\\s+scritto|chiamat[oa]|etichettat[oa]|dal\\s+titolo|con\\s+testo|nome)\\s+(.+)$",
+                Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(instruction);
+        if (!m.find()) return "";
+        return m.group(1).trim();
+    }
+
+    @Override @SuppressWarnings("deprecation")
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_DATASET || resultCode != RESULT_OK ||
+                data == null || data.getData() == null) return;
+        Uri uri = data.getData();
+        chat.logStage("Leggo dataset locale scelto dall'utente (max 1 MB).");
+        trainerExecutor.execute(() -> {
+            try (InputStream in = getContentResolver().openInputStream(uri);
+                 ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                if (in == null) throw new IOException("File non accessibile.");
+                byte[] buffer = new byte[4096];
+                int read;
+                while ((read = in.read(buffer)) != -1) {
+                    if (output.size() + read > 1024 * 1024)
+                        throw new IOException("Dataset troppo grande (max 1 MB).");
+                    output.write(buffer, 0, read);
+                }
+                String contents = new String(output.toByteArray(), StandardCharsets.UTF_8);
+                int inserted = trainingStore.importExamples(contents);
+                runOnUiThread(() -> {
+                    if (!isDestroyed()) {
+                        chat.logStage("Importazione terminata: " + inserted + " nuovi esempi.");
+                        reply("📚 Importati " + inserted + " esempi. Totale: "
+                                + trainingStore.size() + ". Scrivi «allena Fråg».");
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    if (!isDestroyed()) reply("Importazione non riuscita: " + e.getMessage());
+                });
+            }
+        });
     }
 
     private void processBasicCommand(String prompt) {
@@ -351,6 +596,8 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         network.shutdownNow();
+        trainerExecutor.shutdownNow();
+        trainingStore.close();
         knowledge.close();
         super.onDestroy();
     }
