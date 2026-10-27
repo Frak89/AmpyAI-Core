@@ -49,6 +49,14 @@ public final class UiDocument {
         catch (IllegalArgumentException e) { return Color.rgb(16, 19, 26); }
     }
 
+    public String style() {
+        return data.optString("style", "default");
+    }
+
+    public void setStyle(String id) {
+        try { data.put("style", id); } catch (JSONException ignored) {}
+    }
+
     public void setBackground(int color) {
         String hex = String.format(Locale.US, "#%06X", color & 0xFFFFFF);
         try { data.put("background", hex); } catch (JSONException ignored) {}

@@ -22,6 +22,7 @@ public final class AmpyCanvasView extends ScrollView {
     private final Consumer<JSONObject> onTapped;
     private final Runnable onEdited;
     private boolean brightBackground;
+    private FragStyle style = FragStyle.DEFAULT;
 
     public AmpyCanvasView(Context context, Consumer<JSONObject> onTapped, Runnable onEdited) {
         super(context);
@@ -37,6 +38,7 @@ public final class AmpyCanvasView extends ScrollView {
     }
 
     public void render(UiDocument document) {
+        style = FragStyle.byId(document.style());
         int color = document.background();
         brightBackground = (Color.red(color) * 299 + Color.green(color) * 587 + Color.blue(color) * 114) / 1000 > 170;
         setBackgroundColor(color);
@@ -58,11 +60,11 @@ public final class AmpyCanvasView extends ScrollView {
                 EditText input = new EditText(getContext());
                 input.setSingleLine(true);
                 input.setHint(title);
-                input.setHintTextColor(0xFF9CA6B8);
-                input.setTextColor(Color.WHITE);
+                input.setHintTextColor(style.muted);
+                input.setTextColor(style.foreground);
                 input.setTextSize(16f);
                 input.setPadding(dp(16), dp(12), dp(16), dp(12));
-                input.setBackground(rounded(0xFF252B36, 12, 0xFF424958));
+                input.setBackground(rounded(style.surface, style.radius, style.stroke));
                 input.setText(item.optString("value", ""));
                 input.addTextChangedListener(new TextWatcher() {
                     @Override public void beforeTextChanged(CharSequence s, int st, int count, int after) {}
@@ -76,42 +78,42 @@ public final class AmpyCanvasView extends ScrollView {
                 break;
             }
             case "button": {
-                TextView button = label(title, 16, 0xFFFFFFFF, Typeface.BOLD);
+                TextView button = label(title, 16, style.id.equals("minimal") ? 0xFFFFFFFF : style.foreground, Typeface.BOLD);
                 button.setGravity(Gravity.CENTER);
                 button.setMinHeight(dp(52));
                 button.setPadding(dp(16), dp(13), dp(16), dp(13));
-                button.setBackground(rounded(0xFF4B65CE, 14, 0xFF8297EF));
+                button.setBackground(rounded(style.accent, style.radius, style.stroke));
                 button.setClickable(true);
                 button.setOnClickListener(v -> onTapped.accept(item));
                 view = button;
                 break;
             }
             case "title": {
-                TextView heading = label(title, 29, brightBackground ? 0xFF18202E : Color.WHITE, Typeface.BOLD);
+                TextView heading = label(title, 29, style.foreground, Typeface.BOLD);
                 heading.setPadding(0, dp(4), 0, dp(10));
                 heading.setOnClickListener(v -> onTapped.accept(item));
                 view = heading;
                 break;
             }
             case "card": {
-                TextView card = label(title, 18, Color.WHITE, Typeface.NORMAL);
+                TextView card = label(title, 18, style.foreground, Typeface.NORMAL);
                 card.setPadding(dp(18), dp(22), dp(18), dp(22));
                 card.setMinHeight(dp(92));
                 card.setGravity(Gravity.CENTER_VERTICAL);
-                card.setBackground(rounded(0xFF232B39, 17, 0xFF3B475D));
+                card.setBackground(rounded(style.surface, style.radius, style.stroke));
                 card.setOnClickListener(v -> onTapped.accept(item));
                 view = card;
                 break;
             }
             case "divider": {
                 View line = new View(getContext());
-                line.setBackgroundColor(0xFF445063);
+                line.setBackgroundColor(style.stroke);
                 view = line;
                 height = dp(1);
                 break;
             }
             default: {
-                TextView text = label(title, 17, brightBackground ? 0xFF202938 : 0xFFE9EDF7, Typeface.NORMAL);
+                TextView text = label(title, 17, style.foreground, Typeface.NORMAL);
                 text.setPadding(0, dp(7), 0, dp(7));
                 text.setOnClickListener(v -> onTapped.accept(item));
                 view = text;
