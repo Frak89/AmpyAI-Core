@@ -72,6 +72,21 @@ public final class UiDocument {
         } catch (JSONException ignored) {}
     }
 
+    /** A generated verified M/L/Z vector program, not script or bytecode. */
+    public void addVector(String title,String program,int sideDp) {
+        JSONObject item=new JSONObject();
+        try {
+            item.put("id",System.currentTimeMillis()+"-"+nodes().length());
+            item.put("type","vector");
+            item.put("title",title);
+            item.put("program",program);
+            item.put("sideDp",sideDp);
+            nodes().put(item);
+        } catch(JSONException e) {
+            throw new IllegalStateException("Impossibile serializzare il programma.",e);
+        }
+    }
+
     public boolean removeLast() {
         JSONArray items = nodes();
         if (items.length() == 0) return false;

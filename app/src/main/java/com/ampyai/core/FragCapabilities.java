@@ -60,7 +60,18 @@ public final class FragCapabilities {
         new Capability("Definisci","Restituisce solo la definizione realmente salvata e la fonte.",
                "definisci memoria","Recupero archivio, non generazione neurale"),
         new Capability("Parla","Genera una continuazione originale campionando la previsione del carattere successivo.",
-               "parla: ciao","Contesto di 4 caratteri: il risultato può essere privo di senso")
+               "parla: ciao","Contesto di 4 caratteri: il risultato può essere privo di senso"),
+        new Capability("Impara geometria","Estrae relazioni geometriche da testo e le conserva in memoria associativa locale.",
+               "impara geometria: un quadrato ha 4 lati uguali e 4 angoli retti",
+               "Parser limitato a proprietà riconosciute: lati, regolarità, angoli retti"),
+        new Capability("Memoria associazioni","Elenca concetti e programmi vettoriali effettivamente acquisiti.",
+               "memoria associazioni","Non coincide con i pesi della rete linguistica"),
+        new Capability("Associazioni","Mostra i fatti salvati di una forma e se il codice è generabile.",
+               "associazioni quadrato","L'apprendimento richiede informazioni non contraddittorie"),
+        new Capability("Genera codice","Sviluppa e mostra codice Java Canvas da un programma geometrico verificato.",
+               "genera codice: quadrato","Genera sorgente ispezionabile: non compila APK a runtime"),
+        new Capability("Disegna","Esegue un percorso vettoriale M/L/Z, generato da proprietà geometriche memorizzate.",
+               "disegna quadrato lato 180","Motore sicuro: non esegue codice Java arbitrario")
     );
     public static Capability find(String raw) {
         String q=canonical(raw);
