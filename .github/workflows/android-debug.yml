@@ -1,7 +1,7 @@
 name: Android debug APK
 on:
   push:
-    branches: [main, feature/ampydev-rev1]
+    branches: [main, feature/ampydev-rev1, feature/frag-rev2]
   pull_request:
   workflow_dispatch:
 jobs:
@@ -23,10 +23,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Compile debug APK
-        run: gradle --no-daemon :app:assembleDebug --stacktrace
+      - name: Test Fråg neural core and compile APK
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: AmpyAI-Core-AmpyDev-Rev1-debug
+          name: AmpyAI-Core-Frag-Rev2-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
