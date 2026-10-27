@@ -53,6 +53,7 @@ public final class MainActivity extends Activity {
     private FragBrain brain;
     private FragKnowledgeStore knowledge;
     private FragLanguageMemory languageMemory;
+    private FragAssociationStore associativeMemory;
     private volatile FragLanguageModel.Model languageModel;
     private FragLanguageGraphView openLanguageGraph;
     private TextView openLanguageStatus;
@@ -87,6 +88,7 @@ public final class MainActivity extends Activity {
         brain = new FragBrain(preferences);
         knowledge = new FragKnowledgeStore(getApplicationContext());
         languageMemory = new FragLanguageMemory(getApplicationContext());
+        associativeMemory = new FragAssociationStore(getApplicationContext());
         try { languageModel = languageMemory.loadModel(); }
         catch(IOException ignored) { languageModel = null; }
 
@@ -174,6 +176,7 @@ public final class MainActivity extends Activity {
         saveChat();
         chat.logStage("Interpreto: " + shortText(prompt));
         if (handleBrainRequest(prompt)) return;
+        if (handleAssociationRequest(prompt)) return;
         if (handleLanguageRequest(prompt)) return;
         if (handleTrainingRequest(prompt)) return;
         if (prompt.equalsIgnoreCase("annulla") || prompt.equalsIgnoreCase("undo")) {
@@ -201,7 +204,8 @@ public final class MainActivity extends Activity {
                       "un classificatore UI e un piccolo modello linguistico che genera " +
                       "caratteri autoregressivamente (NON è un LLM). " +
                       "Prova: inizia linguaggio, studia parola: memoria, " +
-                      "allena linguaggio, parla: ciao, Psicofråg, Lista cervello.");
+                      "allena linguaggio, parla: ciao, Psicofråg, Lista cervello, "+
+                      "impara geometria: un quadrato ha 4 lati uguali e 4 angoli retti.");
                 chat.logStage("Ho spiegato le capacità disponibili.");
                 break;
             case STYLE:
@@ -222,6 +226,142 @@ public final class MainActivity extends Activity {
      * Primitive generative core: explicit local training and bounded, explicit
      * dictionary lessons. The internet is never silently crawled.
      */
+
+    /**
+     * Converts learned text associations into safe vector programs.
+     * Java source is inspectable output, NOT dynamic bytecode compilation.
+     */
+    private boolean handleAssociationRequest(String prompt) {
+        String raw=prompt.trim();
+        String low=raw.toLowerCase(Locale.ITALIAN);
+        if (low.equals("aiuto disegno") || low.equals("aiuto memoria")
+                || low.equals("aiuto associazioni")) {
+            reply("🐸 ASSOCIAZIONI → CODICE → DISEGNO\n"+
+                    "«insegna lingua: un quadrato ha quattro lati uguali e quattro angoli retti»"+
+                    " memorizza testo e, se riconosce le proprietà, crea una competenza.\n"+
+                    "«impara geometria: un quadrato ha 4 lati uguali e 4 angoli retti»"+
+                    " salva solo le regole del disegno.\n"+
+                    "«memoria associazioni»: mostra i concetti e gli skill disponibili.\n"+
+                    "«associazioni quadrato»: mostra la regola associata.\n"+
+                    "«genera codice: quadrato»: mostra codice Java generato dai vertici.\n"+
+                    "«disegna quadrato lato 180»: esegue un programma vettoriale validato."+
+                    "\nPuoi aggiungere un poligono con nome nuovo: "+
+                    "«impara geometria: la figura stellina ha 5 lati uguali ed è regolare»."+
+                    "\nNon esegue codice Java generato arbitrariamente.");
+            return true;
+        }
+        if (low.equals("memoria associazioni") || low.equals("lista associazioni")
+                 || low.equals("cosa sai disegnare") || low.equals("espandi cervello")) {
+            reply(associativeMemory.overview());
+            return true;
+        }
+        Matcher teach=Pattern.compile(
+                "^(?:impara\\s+geometria|impara\\s+concetto|associa\\s+geometria)\\s*:\\s*(.+)$",
+                Pattern.CASE_INSENSITIVE|Pattern.UNICODE_CASE|Pattern.DOTALL).matcher(raw);
+        if(teach.matches()) {
+            String lesson=teach.group(1).trim();
+            if(lesson.length()>6000 || lesson.length()<12) {
+                reply("La lezione deve contenere fra 12 e 6000 caratteri.");
+                return true;
+            }
+            try {
+                String added=associativeMemory.learn(lesson);
+                if(added.isEmpty()) {
+                    reply("Non ho trovato ancora un soggetto geometrico e proprietà "+
+                        "associabili. Esempio: «un quadrato ha quattro lati uguali e "+
+                        "quattro angoli retti». Non invento il codice.");
+                } else {
+                    languageMemory.saveText(lesson,"geometria_utente");
+                    reply(added);
+                }
+            } catch(IllegalArgumentException|IllegalStateException ex) {
+                reply("⚠ Non posso acquisire la lezione: "+ex.getMessage());
+            }
+            return true;
+        }
+        Matcher inspect=Pattern.compile(
+                "^(?:associazioni|espandi\\s+cervello\\s*:)\\s+([a-zàèéìòù][a-zàèéìòù0-9_-]{2,31})$",
+                Pattern.CASE_INSENSITIVE|Pattern.UNICODE_CASE).matcher(raw);
+        if(inspect.matches()) {
+            FragDrawingEngine.Concept c=associativeMemory.get(inspect.group(1));
+            if(c==null)reply("Non ho associazioni salvate per «"+inspect.group(1)+"».");
+            else {
+                String note=FragDrawingEngine.limitation(c);
+                reply("🧠 "+c.learned()+"\n"+(note.isEmpty()
+                       ?"Codice pronto. Usa «genera codice: "+c.name+"» o «disegna "+c.name+"». "
+                       :"Non ancora eseguibile: "+note));
+            }
+            return true;
+        }
+        Matcher code=Pattern.compile(
+                "^genera\\s+codice\\s*:\\s*([a-zàèéìòù][a-zàèéìòù0-9_-]{2,31})$",
+                Pattern.CASE_INSENSITIVE|Pattern.UNICODE_CASE).matcher(raw);
+        if(code.matches()) {
+            String name=code.group(1);
+            FragDrawingEngine.Concept c=associativeMemory.get(name);
+            if(c==null)reply("Non conosco «"+name+"». Insegnami prima le sue proprietà.");
+            else {
+                try {
+                    FragDrawingEngine.Program program=FragDrawingEngine.compile(c);
+                    if(associativeMemory.program(name)==null)
+                        reply("Lezione valida, ma manca il programma memorizzato: "+
+                                "insegnami nuovamente la geometria.");
+                    else reply("💻 Codice Android generato dalla memoria di «"+c.name+"»:\n"+
+                        program.javaCode(30,30,180)+
+                        "\nScript vettoriale verificato: "+program.path()+
+                        "\nIl codice Java è testo sorgente esportabile, "+
+                        "non viene compilato in APK. Il percorso M/L/Z "+
+                        "è invece eseguibile nel motore sicuro dell'app.");
+                } catch(IllegalArgumentException|IllegalStateException ex) {
+                    reply("Codice non generabile: "+ex.getMessage());
+                }
+            }
+            return true;
+        }
+        Matcher draw=Pattern.compile(
+                "^disegna\\s+([a-zàèéìòù][a-zàèéìòù0-9_-]{2,31})"+
+                  "(?:\\s+(?:lato|dimensione)\\s+(\\d+))?$",
+                Pattern.CASE_INSENSITIVE|Pattern.UNICODE_CASE).matcher(raw);
+        if(draw.matches()) {
+            String name=draw.group(1);
+            int requested=180;
+            try {
+                if(draw.group(2)!=null)requested=Integer.parseInt(draw.group(2));
+                if(requested<40||requested>500) {
+                    reply("La dimensione deve essere 40–500 dp.");
+                    return true;
+                }
+                FragDrawingEngine.Concept c=associativeMemory.get(name);
+                String saved=associativeMemory.program(name);
+                if(c==null||saved==null) {
+                    reply("Non so ancora disegnare «"+name+"». "+
+                        "Devi prima insegnarmi le sue caratteristiche: "+
+                        "«impara geometria: un quadrato ha quattro lati uguali e quattro angoli retti».");
+                    return true;
+                }
+                FragDrawingEngine.Program output=FragDrawingEngine.compile(c);
+                if(!output.path().equals(saved))
+                    throw new IllegalStateException("Il programma salvato non supera la validazione.");
+                cancelPendingProposal();
+                String before=document.encode();
+                document.addVector(c.name,saved,requested);
+                pushUndo(before);
+                canvas.render(document);
+                saveScene();
+                chat.logStage("Programma vettoriale validato eseguito: "+name);
+                reply("✏️ Ho disegnato «"+c.name+"» sul canvas da regole memorizzate. "+
+                    "Lati: "+c.sides+", dimensione: "+requested+
+                    " dp. Il programma resterà disponibile dopo il riavvio.");
+            } catch(NumberFormatException ex) {
+                reply("Dimensione non valida.");
+            } catch(IllegalArgumentException|IllegalStateException ex) {
+                reply("Non posso eseguire il programma: "+ex.getMessage());
+            }
+            return true;
+        }
+        return false;
+    }
+
     private boolean handleLanguageRequest(String prompt) {
         String trimmed=prompt.trim();
         String low=trimmed.toLowerCase(Locale.ITALIAN);
@@ -259,8 +399,15 @@ public final class MainActivity extends Activity {
                 reply("Aspetta che termini la lezione attuale.");
             } else {
                 languageMemory.saveText(statement,"utente");
+                String association = "";
+                try {
+                    association = associativeMemory.learn(statement);
+                } catch (IllegalArgumentException | IllegalStateException ex) {
+                    association = "⚠ Associazione geometrica non acquisita: "+ex.getMessage();
+                }
                 reply("📘 Ho salvato un nuovo testo. Corpus: " + languageMemory.texts() +
-                    " documenti. Per incorporarlo nei pesi usa «allena linguaggio».");
+                    " documenti. Per incorporarlo nei pesi linguistici usa «allena linguaggio»." +
+                    (association.isEmpty() ? "" : "\n\n"+association));
             }
             return true;
         }
@@ -455,7 +602,7 @@ public final class MainActivity extends Activity {
             return true;
         }
         if (normal.equals("lista cervello") || normal.equals("lista comandi cervello")) {
-            reply(FragCapabilities.list());
+            reply(FragCapabilities.list()+"\n\n"+associativeMemory.overview());
             chat.logStage("Registro delle funzioni installate consultato.");
             return true;
         }
@@ -504,6 +651,18 @@ public final class MainActivity extends Activity {
         if (subject.isEmpty() || subject.length() > 100) {
             reply("Scrivi «Approfondisci X» indicando un argomento di massimo 100 caratteri.");
             return;
+        }
+        try {
+            FragDrawingEngine.Concept learned = associativeMemory.get(subject);
+            if(learned!=null) {
+                String note=FragDrawingEngine.limitation(learned);
+                reply("🧬 "+learned.learned()+"\nStato: "+
+                       (note.isEmpty()?"codice verificato; puoi scrivere «disegna "+
+                         learned.name+"»":"associazioni ancora incomplete: "+note));
+                return;
+            }
+        } catch(IllegalArgumentException ignored) {
+            // Topic may contain spaces: fall back to language and research knowledge.
         }
         String[] storedDefinition = languageMemory.definition(subject);
         if (storedDefinition != null) {
@@ -724,7 +883,9 @@ public final class MainActivity extends Activity {
               " · fonti recuperate: " + knowledge.sourceCount() +
               "\nConfigurazione prossimo training: " + requestedNeurons +
               " neuroni / " + requestedEpochs + " epoche" +
-              "\n7 classi UI fisse: button, title, text, input, card, login, dashboard.";
+              "\n7 classi UI fisse: button, title, text, input, card, login, dashboard." +
+              "\nMemoria associativa: "+associativeMemory.conceptCount()+
+              " concetti, "+associativeMemory.skillCount()+" nuovi programmi vettoriali.";
     }
 
     private boolean handleTrainingRequest(String prompt) {
@@ -1164,6 +1325,7 @@ public final class MainActivity extends Activity {
         network.shutdownNow();
         languageExecutor.shutdownNow();
         languageMemory.close();
+        associativeMemory.close();
         trainerExecutor.shutdownNow();
         trainingStore.close();
         knowledge.close();

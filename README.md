@@ -69,3 +69,24 @@ Il ramo `feature/frag-v3-language` estende `feature/frag-rev3` in modo separato.
 ### Piccolo passo di esplorazione autonoma, ma circoscritta
 
 `cammina` (o `esplora dizionario`) esamina definizioni già salvate, sceglie **al massimo quattro nuove parole non ancora presenti** nel dizionario locale e tenta di recuperarne le definizioni dal Wikizionario. Al primo avvio usa parole iniziali neutre. Se ottiene definizioni nuove o cambiate, le salva con URL fonte e avvia addestramento incrementale del Language Core. Quando ripeti il comando, il candidato successivo può derivare dalle definizioni apprese precedentemente. Si tratta di una selezione euristica verificabile, **non** di comprensione o apprendimento autonomo illimitato. Non può navigare continuamente senza una nuova richiesta.
+
+
+## Fråg V3 Associative Code — imparare dal testo a disegnare
+
+Questa revisione **non cambia la V3 Language Core**, ma aggiunge un *nuovo sistema di memoria e competenze componibili*: non ci sono modelli esterni. Fråg può estrarre da frasi dell'utente proprietà geometriche riconosciute, accumularle per nome nella tabella SQLite locale `frag_association_v3.db`, e quando ha abbastanza informazioni compilare automaticamente una **sequenza M/L/Z di vertici vettoriali**, verificando forma, lati e angoli retti. Il programma rimane persistente e viene eseguito dal visualizzatore Android sicuro tramite `android.graphics.Path`; può anche produrre codice Java Canvas ispezionabile.
+
+Sequenza **una frase per volta**:
+```text
+memoria associazioni
+impara geometria: un quadrato ha quattro lati uguali e quattro angoli retti
+associazioni quadrato
+genera codice: quadrato
+disegna quadrato lato 180
+Psicofråg
+```
+
+Anche `insegna lingua: un quadrato ha quattro lati uguali e quattro angoli retti` memorizza la frase nel corpus **e** tenta di estrarre le proprietà geometriche (senza eseguire codice). Potrai dividere le conoscenze in più lezioni: `Il quadrato ha 4 lati`, `Il quadrato ha quattro angoli retti`, `Nel quadrato i lati sono uguali`. Quando il requisito è soddisfatto, appare la nuova abilità `disegna quadrato` senza introdurre un nuovo comando cablato per quella specifica forma. Il motore generalizza anche a poligoni regolari con 3–12 lati se descritti in modo completo: per esempio `impara geometria: la figura stellina ha cinque lati uguali ed è un poligono regolare`, poi `disegna stellina lato 170`.
+
+Comandi: `aiuto disegno`, `impara geometria: ...`, `memoria associazioni`, `associazioni X`, `genera codice: X`, `disegna X lato N` (dimensioni 40–500 dp). `Lista cervello` e `Approfondisci X` integrano la memoria associativa.
+
+**Limiti**: codice Java generato come sorgente ma **non compilato né iniettato nel sistema Android a runtime**. L'esecutore interpreta esclusivamente un insieme vincolato e validato di istruzioni vettoriali. Un testo narrativo qualsiasi, un manuale o una pagina web **non possono aggiungere arbitrariamente codice eseguibile**. I nuovi comandi nascono da programmi memorizzati (dati), non da una riscrittura autonoma dell'APK, e non sono neuroni prodotti spontaneamente dal Language Core. Il parser riconosce solo proprietà geometriche semplici; la classificazione semantica è euristica, e l'uso su device va verificato.

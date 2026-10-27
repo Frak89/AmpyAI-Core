@@ -14,11 +14,14 @@ public final class FragVectorCanvas extends View {
     private final Paint labelPen=new Paint(3);
     private String instructions="";
     private Path normalized;
+    private int sideDp=180;
     public FragVectorCanvas(Context context) {
         super(context);
         setMinimumHeight(dp(270));
     }
-    public void setProgram(String path) {
+    public void setProgram(String path,int side) {
+        if(side<40||side>500)throw new IllegalArgumentException("Dimensione non valida.");
+        this.sideDp=side;
         this.instructions=path;
         this.normalized=decode(path);
         invalidate();
@@ -59,7 +62,7 @@ public final class FragVectorCanvas extends View {
         c.drawColor(0xFF14212B);
         if(normalized==null)return;
         float margin=dp(23);
-        float side=Math.min(getWidth()-2*margin,getHeight()-2*margin);
+        float side=Math.min(dp(sideDp),Math.min(getWidth()-2*margin,getHeight()-2*margin));
         if(side<=0)return;
         float left=(getWidth()-side)/2f,top=(getHeight()-side)/2f;
         c.save();c.translate(left,top);c.scale(side,side);
