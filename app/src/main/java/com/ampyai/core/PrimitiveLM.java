@@ -133,7 +133,8 @@ public final class PrimitiveLM {
             double totalLoss=0;
             final float learningRate=0.015f/(1f+ep*.22f);
             for(int pos=0;pos<len;pos++){
-                int[] prev=context(sample,pos),target=id(sample.charAt(pos));
+                int[] prev=context(sample,pos);
+                int target=id(sample.charAt(pos));
                 forward(m,prev,activations,logits);
                 float[] p=softmax(logits,1.0f);
                 totalLoss-=Math.log(Math.max(1e-8,p[target]));
