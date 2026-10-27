@@ -20,11 +20,24 @@ import java.util.Set;
  */
 public final class FragNeuralTrainer {
     public static final int FEATURES = 384;
-    public static final int HIDDEN = 32;
+    public static final int HIDDEN = 32; // V2 default; V3 models store actual hidden width.
     public static final String[] LABELS = {
         "button", "title", "text", "input", "card", "login", "dashboard"
     };
     private static final int OUTPUTS = LABELS.length;
+
+    public static final class Configuration {
+        public final int hidden;
+        public final int epochs;
+        public Configuration(int hidden, int epochs) {
+            if (hidden < 8 || hidden > 128 || hidden % 8 != 0)
+                throw new IllegalArgumentException("Neuroni: 8..128 a passi di 8.");
+            if (epochs < 10 || epochs > 200 || epochs % 10 != 0)
+                throw new IllegalArgumentException("Epoche: 10..200 a passi di 10.");
+            this.hidden = hidden;
+            this.epochs = epochs;
+        }
+    }
 
     public static final class Example {
         public final String text;
@@ -36,21 +49,28 @@ public final class FragNeuralTrainer {
     }
 
     public static final class Model {
-        public final float[][] hidden = new float[HIDDEN][FEATURES];
-        public final float[] hiddenBias = new float[HIDDEN];
-        public final float[][] output = new float[OUTPUTS][HIDDEN];
+        public final float[][] hidden;
+        public final float[] hiddenBias;
+        public final float[][] output;
         public final float[] outputBias = new float[OUTPUTS];
         public int examples;
         public int epochs;
         public double validationAccuracy;
 
-        public Model() {
+        public Model() { this(HIDDEN); }
+
+        public Model(int neurons) {
+            if (neurons < 8 || neurons > 128)
+                throw new IllegalArgumentException("Dimensione di rete non valida.");
+            hidden = new float[neurons][FEATURES];
+            hiddenBias = new float[neurons];
+            output = new float[OUTPUTS][neurons];
             Random r = new Random(20261027L);
-            for (int h = 0; h < HIDDEN; h++)
+            for (int h = 0; h < hidden.length; h++)
                 for (int f = 0; f < FEATURES; f++)
                     hidden[h][f] = (float)(r.nextGaussian() * 0.055);
             for (int c = 0; c < OUTPUTS; c++)
-                for (int h = 0; h < HIDDEN; h++)
+                for (int h = 0; h < hidden.length; h++)
                     output[c][h] = (float)(r.nextGaussian() * 0.10);
         }
     }
@@ -66,7 +86,71 @@ public final class FragNeuralTrainer {
         }
     }
 
-    public interface Listener { void progress(int epoch, int total, double trainLoss); }
+    public interface Listener {
+        /** Called on the TRAINING thread; snapshot is the current, actually trained model. */
+        void progress(int epoch, int total, double trainLoss, Model currentModel);
+    }
+
+    /** An immutable actual forward-pass snapshot for visualizing sampled weights and activations. */
+    public static final class Snapshot {
+        public final int inputs;
+        public final int hidden;
+        public final int outputs;
+        public final int[] featureIds;
+        public final int[] hiddenIds;
+        public final float[] featureValues;
+        public final float[] hiddenValues;
+        public final float[] outputProbabilities;
+        public final float[][] inputWeights;
+        public final float[][] outputWeights;
+
+        Snapshot(int inputs, int hidden, int outputs, int[] featureIds, int[] hiddenIds,
+                 float[] featureValues, float[] hiddenValues, float[] outputProbabilities,
+                 float[][] inputWeights, float[][] outputWeights) {
+            this.inputs = inputs; this.hidden = hidden; this.outputs = outputs;
+            this.featureIds = featureIds; this.hiddenIds = hiddenIds;
+            this.featureValues = featureValues; this.hiddenValues = hiddenValues;
+            this.outputProbabilities = outputProbabilities;
+            this.inputWeights = inputWeights; this.outputWeights = outputWeights;
+        }
+    }
+
+    public static Snapshot inspect(Model model, String prompt) {
+        float[] values = vector(prompt == null ? "" : prompt);
+        int neuronCount = model.hidden.length;
+        float[] activations = new float[neuronCount];
+        float[] logits = new float[OUTPUTS];
+        forward(model, values, activations, logits);
+        float[] probs = softmax(logits);
+        int[] features = topIndices(values, Math.min(14, FEATURES), true);
+        int[] neurons = topIndices(activations, Math.min(14, neuronCount), false);
+        float[] featureValues = new float[features.length];
+        float[] neuronValues = new float[neurons.length];
+        float[][] inputWeights = new float[neurons.length][features.length];
+        float[][] outputWeights = new float[OUTPUTS][neurons.length];
+        for (int f = 0; f < features.length; f++) featureValues[f] = values[features[f]];
+        for (int h = 0; h < neurons.length; h++) {
+            neuronValues[h] = activations[neurons[h]];
+            for (int f = 0; f < features.length; f++)
+                inputWeights[h][f] = model.hidden[neurons[h]][features[f]];
+            for (int c = 0; c < OUTPUTS; c++)
+                outputWeights[c][h] = model.output[c][neurons[h]];
+        }
+        return new Snapshot(FEATURES, neuronCount, OUTPUTS, features, neurons,
+                featureValues, neuronValues, probs, inputWeights, outputWeights);
+    }
+
+    private static int[] topIndices(float[] values, int count, boolean includeZeroSamples) {
+        Integer[] ids = new Integer[values.length];
+        for (int i = 0; i < ids.length; i++) ids[i] = i;
+        Arrays.sort(ids, (a,b) -> {
+            int v = Float.compare(Math.abs(values[b]), Math.abs(values[a]));
+            return v == 0 ? Integer.compare(a, b) : v;
+        });
+        int[] selected = new int[count];
+        for (int i = 0; i < count; i++) selected[i] = ids[i];
+        return selected;
+    }
 
     public static int label(String raw) {
         if (raw == null) return -1;
@@ -87,6 +171,10 @@ public final class FragNeuralTrainer {
      * Validation samples are NEVER used for gradient updates.
      */
     public static Model train(List<Example> provided, Listener listener) {
+        return train(provided, new Configuration(HIDDEN, 70), listener);
+    }
+
+    public static Model train(List<Example> provided, Configuration config, Listener listener) {
         if (provided.size() < 21) throw new IllegalArgumentException("Servono almeno 21 esempi.");
         List<Example> train = new ArrayList<>();
         List<Example> validation = new ArrayList<>();
@@ -101,9 +189,9 @@ public final class FragNeuralTrainer {
         }
         if (train.size() < 14 || validation.size() < 2)
             throw new IllegalArgumentException("Occorrono almeno 3 esempi per categoria e almeno 21 totali.");
-        Model model = new Model();
+        Model model = new Model(config.hidden);
         Random random = new Random(1414L);
-        final int epochs = 65;
+        final int epochs = config.epochs;
         for (int epoch = 1; epoch <= epochs; epoch++) {
             Collections.shuffle(train, random);
             double loss = 0;
@@ -111,7 +199,7 @@ public final class FragNeuralTrainer {
             float rate = (float)(0.065 / (1.0 + (epoch - 1) * 0.015));
             for (Example example : train) {
                 float[] input = vector(example.text);
-                float[] hidden = new float[HIDDEN];
+                float[] hidden = new float[model.hidden.length];
                 float[] logits = new float[OUTPUTS];
                 forward(model, input, hidden, logits);
                 float[] probs = softmax(logits);
@@ -121,7 +209,7 @@ public final class FragNeuralTrainer {
                 float[] outGrad = new float[OUTPUTS];
                 for (int c = 0; c < OUTPUTS; c++)
                     outGrad[c] = probs[c] - (c == example.label ? 1f : 0f);
-                float[] hiddenGrad = new float[HIDDEN];
+                float[] hiddenGrad = new float[model.hidden.length];
                 for (int h = 0; h < HIDDEN; h++) {
                     float grad = 0;
                     for (int c = 0; c < OUTPUTS; c++)
@@ -142,7 +230,7 @@ public final class FragNeuralTrainer {
                 }
             }
             if (listener != null && (epoch == 1 || epoch % 10 == 0 || epoch == epochs))
-                listener.progress(epoch, epochs, loss / train.size());
+                listener.progress(epoch, epochs, loss / train.size(), model);
         }
         int right = 0;
         for (Example e : validation) {
