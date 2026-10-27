@@ -37,6 +37,30 @@ public final class FragKnowledgeStore extends SQLiteOpenHelper {
                 SQLiteDatabase.CONFLICT_REPLACE);
     }
 
+    /** Returns ONLY actually cached source snippets matching the topic. */
+    public List<FragResearch.Hit> findTopic(String topic) {
+        List<FragResearch.Hit> found = new ArrayList<>();
+        String q=topic.toLowerCase(java.util.Locale.ROOT).trim();
+        // Avoid interpreting LIKE wildcards as user controlled patterns.
+        q=q.replace("\\","\\\\").replace("%","\\%").replace("_","\\_");
+        try (Cursor cursor = getReadableDatabase().rawQuery(
+                "SELECT provider,title,snippet,url FROM sources " +
+                "WHERE LOWER(title) LIKE ? ESCAPE '\\' OR LOWER(query) LIKE ? ESCAPE '\\' " +
+                "OR LOWER(snippet) LIKE ? ESCAPE '\\' ORDER BY fetched DESC LIMIT 3",
+                new String[]{"%"+q+"%","%"+q+"%","%"+q+"%"})) {
+            while(cursor.moveToNext()) found.add(new FragResearch.Hit(
+                    cursor.getString(0),cursor.getString(1),
+                    cursor.getString(2),cursor.getString(3)));
+        }
+        return found;
+    }
+
+    public int sourceCount() {
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT COUNT(*) FROM sources", null)) {
+            return c.moveToFirst()?c.getInt(0):0;
+        }
+    }
+
     public List<FragResearch.Hit> cached(String query) {
         List<FragResearch.Hit> hits = new ArrayList<>();
         try (Cursor cursor = getReadableDatabase().query("sources",
