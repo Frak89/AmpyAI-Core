@@ -191,7 +191,7 @@ public final class MainActivity extends Activity {
         String before = document.encode();
         String low = decision.argument.toLowerCase(Locale.ROOT);
         chat.logStage("Valuto le preferenze grafiche memorizzate.");
-        FragStyle proposed = brain.propose(decision.style, null);
+        FragStyle proposed = brain.propose(decision.style, null, decision.argument);
         // A request can contain both a layout and a style.
         if (low.contains("dashboard")) modules.get(0).apply("crea dashboard", document);
         else if (low.contains("login")) modules.get(0).apply("crea schermata login", document);
@@ -223,7 +223,7 @@ public final class MainActivity extends Activity {
         chat.logStage("Registro il feedback per " + prior.label + ".");
         switch (answer) {
             case "like":
-                brain.remember(prior, true);
+                brain.remember(prior, true, pendingRequest);
                 pendingStyle = null;
                 pendingBefore = null;
                 pendingRequest = null;
@@ -236,12 +236,12 @@ public final class MainActivity extends Activity {
             case "dislike":
             case "alternative":
                 if ("dislike".equals(answer)) {
-                    brain.remember(prior, false);
+                    brain.remember(prior, false, pendingRequest);
                     reply("Capito: «" + prior.label + "» non ti convince. Cerco un'alternativa.");
                 } else reply("Provo una proposta grafica differente.");
                 String baseline = pendingBefore;
                 document = UiDocument.parse(baseline);
-                FragStyle next = brain.propose(null, prior.id);
+                FragStyle next = brain.propose(null, prior.id, pendingRequest);
                 preview(next);
                 break;
             default:

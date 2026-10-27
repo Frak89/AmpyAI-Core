@@ -2,6 +2,8 @@ package com.ampyai.core;
 
 import android.content.SharedPreferences;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -53,7 +55,7 @@ public final class FragBrain {
         return new Decision(Kind.NORMAL, raw, null);
     }
 
-    public FragStyle propose(FragStyle explicit, String exceptId) {
+    public FragStyle propose(FragStyle explicit, String exceptId, String context) {
         if (explicit != null && !explicit.id.equals(exceptId)) return explicit;
         FragStyle best = null;
         double bestValue = Double.NEGATIVE_INFINITY;
@@ -65,6 +67,10 @@ public final class FragBrain {
             int up = memory.getInt("frag_like_" + candidate.id, 0);
             int down = memory.getInt("frag_dislike_" + candidate.id, 0);
             double rank = (up * 3.0) - (down * 4.0) + (proposals.size() - i) * 0.01;
+            // Original, tiny, online-trained association model (no pretrained weights).
+            for (String word : tokens(context)) {
+                rank += memory.getInt("frag_word_" + candidate.id + "_" + word, 0) * 0.6;
+            }
             if (rank > bestValue) {
                 bestValue = rank;
                 best = candidate;
@@ -73,10 +79,30 @@ public final class FragBrain {
         return best == null ? FragStyle.CYBERPUNK : best;
     }
 
-    public void remember(FragStyle style, boolean liked) {
+    public void remember(FragStyle style, boolean liked, String context) {
         String key = (liked ? "frag_like_" : "frag_dislike_") + style.id;
-        memory.edit().putInt(key, memory.getInt(key, 0) + 1).apply();
-        if (liked) memory.edit().putString("frag_favorite", style.id).apply();
+        SharedPreferences.Editor changes = memory.edit();
+        changes.putInt(key, memory.getInt(key, 0) + 1);
+        for (String word : tokens(context)) {
+            String tokenKey = "frag_word_" + style.id + "_" + word;
+            int current = memory.getInt(tokenKey, 0);
+            int weight = Math.max(-10, Math.min(10, current + (liked ? 1 : -1)));
+            changes.putInt(tokenKey, weight);
+        }
+        if (liked) changes.putString("frag_favorite", style.id);
+        changes.apply();
+    }
+
+    private static Set<String> tokens(String text) {
+        Set<String> words = new HashSet<>();
+        if (text == null) return words;
+        for (String token : text.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) {
+            if (token.length() < 4 || token.length() > 20) continue;
+            if (token.matches("stile|crea|fammi|voglio|proponi|questo|quello|suggerisci|grafica|design|tema|fråg|dashboard")) continue;
+            words.add(token);
+            if (words.size() >= 10) break;
+        }
+        return words;
     }
 
     public String preferenceExplanation(FragStyle style) {

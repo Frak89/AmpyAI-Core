@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -70,8 +69,8 @@ public final class FragResearch {
         return collected;
     }
 
-    private static String encode(String input) {
-        return URLEncoder.encode(input, StandardCharsets.UTF_8);
+    private static String encode(String input) throws IOException {
+        return URLEncoder.encode(input, "UTF-8");
     }
 
     private static JSONObject fetch(String url) throws IOException {
@@ -114,8 +113,11 @@ public final class FragResearch {
         @Override public List<Hit> search(String query) throws Exception {
             String api = "https://it.wikipedia.org/w/api.php?action=query&format=json&list=search"
                     + "&srlimit=3&srnamespace=0&srsearch=" + encode(query);
-            JSONArray matches = fetch(api).optJSONObject("query").optJSONArray("search");
+            JSONObject root = fetch(api);
+            JSONObject queryData = root.optJSONObject("query");
             List<Hit> result = new ArrayList<>();
+            if (queryData == null) return result;
+            JSONArray matches = queryData.optJSONArray("search");
             if (matches == null) return result;
             for (int i = 0; i < matches.length(); i++) {
                 JSONObject row = matches.optJSONObject(i);
