@@ -336,17 +336,22 @@ public final class MainActivity extends Activity {
             FragLanguageModel.Model working=initial==null
                     ? new FragLanguageModel.Model() : FragLanguageModel.copy(initial);
             FragLanguageModel.Model updated=FragLanguageModel.train(working,corpus,6,
-                (epoch, total, loss, snapshot)->runOnUiThread(()-> {
-                    if(isDestroyed())return;
-                    chat.logStage("Language Core epoca "+epoch+"/"+total+
-                        " · loss "+String.format(Locale.ITALY,"%.3f",loss));
-                    if (openLanguageGraph!=null)
-                        openLanguageGraph.display(snapshot,liveBrainInspection);
-                    if (openLanguageStatus!=null)
-                        openLanguageStatus.setText("Language Core: training " + epoch+"/"+total+
-                            " · loss "+String.format(Locale.ITALY,"%.3f",loss)+
-                            "\n"+FragLanguageModel.parameterCount()+" parametri");
-                }));
+                (epoch, total, loss, snapshot)->{
+                    // Freeze the genuine weights at each epoch for the UI observer.
+                    final FragLanguageModel.Model atThisEpoch =
+                            FragLanguageModel.copy(snapshot);
+                    runOnUiThread(()-> {
+                        if(isDestroyed())return;
+                        chat.logStage("Language Core epoca "+epoch+"/"+total+
+                            " · loss "+String.format(Locale.ITALY,"%.3f",loss));
+                        if (openLanguageGraph!=null)
+                            openLanguageGraph.display(atThisEpoch,liveBrainInspection);
+                        if (openLanguageStatus!=null)
+                            openLanguageStatus.setText("Language Core: training " + epoch+"/"+total+
+                                " · loss "+String.format(Locale.ITALY,"%.3f",loss)+
+                                "\n"+FragLanguageModel.parameterCount()+" parametri");
+                    });
+                });
             languageMemory.saveModel(updated);
             languageModel=updated;
             runOnUiThread(()->{

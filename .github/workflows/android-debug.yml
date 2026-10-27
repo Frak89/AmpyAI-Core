@@ -1,7 +1,7 @@
 name: Android debug APK
 on:
   push:
-    branches: [main, feature/ampydev-rev1, feature/frag-rev2, feature/frag-rev3]
+    branches: [main, feature/ampydev-rev1, feature/frag-rev2, feature/frag-rev3, feature/frag-v3-language]
   pull_request:
   workflow_dispatch:
 jobs:
@@ -27,6 +27,6 @@ jobs:
         run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: AmpyAI-Core-Frag-Rev3-debug
+          name: AmpyAI-Core-Frag-Rev3-Language-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
