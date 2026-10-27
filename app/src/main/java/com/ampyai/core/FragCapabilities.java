@@ -44,7 +44,21 @@ public final class FragCapabilities {
         new Capability("Editor UI","Aggiunge titolo, testo, pulsante, campo, scheda, sfondo e template.",
                "crea pulsante Conferma","Widget limitati, niente drag and drop"),
         new Capability("Annulla","Ripristina l'ultima modifica di scena mantenuta nello stack.",
-               "annulla","Massimo 20 stati in memoria")
+               "annulla","Massimo 20 stati in memoria"),
+        new Capability("Inizia linguaggio","Crea un corpus italiano originale e addestra da zero un modello neurale autoregressivo su caratteri.",
+               "inizia linguaggio","Contesto di 4 caratteri, non è un LLM"),
+        new Capability("Insegna lingua","Registra testo fornito dall'utente e lo conserva come corpus.",
+               "insegna lingua: la memoria conserva una parola","Per aggiornare i pesi occorre allena linguaggio"),
+        new Capability("Allena linguaggio","Prosegue l'addestramento dei pesi linguistici esistenti usando un corpus locale limitato.",
+               "allena linguaggio","Modello minuscolo, non impara significati complessi"),
+        new Capability("Studia parola","Consulta su richiesta Wikizionario, salva definizioni con URL e addestra il piccolo nucleo linguistico.",
+               "studia parola: memoria","Richiede Internet; se non trova una definizione, non la inventa"),
+        new Capability("Esplora dizionario","Studia al massimo quattro parole prestabilite dal Wikizionario con fonti.",
+               "esplora dizionario","Non è un crawler autonomo"),
+        new Capability("Definisci","Restituisce solo la definizione realmente salvata e la fonte.",
+               "definisci memoria","Recupero archivio, non generazione neurale"),
+        new Capability("Parla","Genera una continuazione originale campionando la previsione del carattere successivo.",
+               "parla: ciao","Contesto di 4 caratteri: il risultato può essere privo di senso")
     );
     public static Capability find(String raw) {
         String q=canonical(raw);
