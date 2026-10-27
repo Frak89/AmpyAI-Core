@@ -56,6 +56,14 @@ public final class AmpyCanvasView extends ScrollView {
         View view;
         int height = LayoutParams.WRAP_CONTENT;
         switch (kind) {
+            case "vector": {
+                FragVectorCanvas graphic=new FragVectorCanvas(getContext());
+                int side=Math.min(500,Math.max(40,item.optInt("sideDp",180)));
+                graphic.setProgram(item.optString("program",""),side);
+                view=graphic;
+                height=dp(Math.max(210,Math.min(560,side+35)));
+                break;
+            }
             case "input": {
                 EditText input = new EditText(getContext());
                 input.setSingleLine(true);

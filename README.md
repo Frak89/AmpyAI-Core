@@ -38,3 +38,55 @@ Strumenti della V2 ancora presenti: anteprime live di stile, feedback, ricerca e
 Java 17, Gradle 8.13, Android SDK 36; usa Android Studio o il workflow GitHub **Android debug APK** nella branch `feature/frag-rev3`. Il workflow esegue `testDebugUnitTest` e `assembleDebug`, quindi pubblica `AmpyAI-Core-Frag-Rev3-debug` con `app-debug.apk`.
 
 **Limiti reali:** ancora niente apprendimento libero da PDF, riconoscimento universale, ragionamento generale, acquisizione spontanea di nuovi comandi operativi né auto-modifica del codice. Il comando `Approfondisci` è fondato solo su capacità nel registro, dataset etichettati e fonti già archiviate: non inventa comprensione. Il grafico mostra valori matematici veri, non attività di coscienza.
+
+
+## Fråg V3 — Primo nucleo generativo autonomo (sperimentale)
+
+Il progetto include ora **due reti neurali originali e distinte**:
+
+1. **Neural UI Core:** precedente classificatore 384 → N → 7 classi grafiche.
+2. **Language Core:** piccolo modello linguistico **autoregressivo neurale**, scritto in Java senza pesi preaddestrati. Codifica un contesto degli **ultimi 4 caratteri**, usa 64 neuroni ReLU, e predice il carattere successivo con una distribuzione softmax. Genera nuovo testo tramite campionamento. Non è un *large* language model: sa solo produrre continuazioni statistiche, frequentemente senza senso.
+
+### Comandi da inviare uno per volta nella chat AmpyDev
+
+- `inizia linguaggio` — salva un breve corpus originale italiano se il database è vuoto, crea e addestra da zero il piccolo modello.
+- `parla: ciao` — ottiene un nuovo testo **veramente generato** dalla rete.
+- `insegna lingua: un sensore misura una grandezza fisica` — salva nuovo materiale per il training, senza fingere di averlo già imparato.
+- `allena linguaggio` — addestramento **incrementale**, continua dai pesi esistenti su un corpus conservato in locale.
+- `studia parola: memoria` — richiesta esplicita HTTPS a **Wikizionario in italiano**, estrazione prudente di definizioni e URL fonte, salvataggio offline, poi aggiornamento incrementale del Language Core. Se la definizione non può essere ricavata in modo affidabile, non inventa nulla.
+- `esplora dizionario` — studia **quattro** parole predefinite, non è un crawler senza limiti. Non prosegue né ricerca autonomamente a chat chiusa.
+- `definisci memoria` — riporta la definizione e la fonte conservate, distinguendole dal testo generato.
+- `Psicofråg` — mostra **due** viste: il classificatore UI e un microscopio del Language Core con input/uscite e pesi reali campionati, oltre a numero definizioni, testi, parametri e sessioni di addestramento.
+
+Il dizionario usa l'API ufficiale MediaWiki `action=parse&prop=wikitext`; la fonte resta in memoria e viene mostrata con attribuzione al **Wikizionario (licenza CC BY-SA)**. Le risorse online sono consultate solo dopo un comando esplicito; richieste sequenziali e limitate, timeout e limite di byte. **Non è self-improvement generalista:** il numero di neuroni del Language Core è fisso; crescono corpus, definizioni consultabili e aggiornamenti dei pesi, non capacità programmabili. Restano necessari test con un telefono e con la connettività del dizionario.
+
+Per evitare risposte inventate, `definisci X` usa soltanto definizioni veramente memorizzate. `parla: X` e richieste sconosciute indicano chiaramente che il testo è generato da un modello primordiale e non affidabile.
+
+### Build e verifica
+
+Il ramo `feature/frag-v3-language` estende `feature/frag-rev3` in modo separato. GitHub Actions compila e produce l'artifact `AmpyAI-Core-Frag-Rev3-Language-debug`; include anche test di apprendimento dei pesi e parser di definizioni con esempi sintetici. Nessuna telemetria esterna né API a pagamento.
+
+### Piccolo passo di esplorazione autonoma, ma circoscritta
+
+`cammina` (o `esplora dizionario`) esamina definizioni già salvate, sceglie **al massimo quattro nuove parole non ancora presenti** nel dizionario locale e tenta di recuperarne le definizioni dal Wikizionario. Al primo avvio usa parole iniziali neutre. Se ottiene definizioni nuove o cambiate, le salva con URL fonte e avvia addestramento incrementale del Language Core. Quando ripeti il comando, il candidato successivo può derivare dalle definizioni apprese precedentemente. Si tratta di una selezione euristica verificabile, **non** di comprensione o apprendimento autonomo illimitato. Non può navigare continuamente senza una nuova richiesta.
+
+
+## Fråg V3 Associative Code — imparare dal testo a disegnare
+
+Questa revisione **non cambia la V3 Language Core**, ma aggiunge un *nuovo sistema di memoria e competenze componibili*: non ci sono modelli esterni. Fråg può estrarre da frasi dell'utente proprietà geometriche riconosciute, accumularle per nome nella tabella SQLite locale `frag_association_v3.db`, e quando ha abbastanza informazioni compilare automaticamente una **sequenza M/L/Z di vertici vettoriali**, verificando forma, lati e angoli retti. Il programma rimane persistente e viene eseguito dal visualizzatore Android sicuro tramite `android.graphics.Path`; può anche produrre codice Java Canvas ispezionabile.
+
+Sequenza **una frase per volta**:
+```text
+memoria associazioni
+impara geometria: un quadrato ha quattro lati uguali e quattro angoli retti
+associazioni quadrato
+genera codice: quadrato
+disegna quadrato lato 180
+Psicofråg
+```
+
+Anche `insegna lingua: un quadrato ha quattro lati uguali e quattro angoli retti` memorizza la frase nel corpus **e** tenta di estrarre le proprietà geometriche (senza eseguire codice). Potrai dividere le conoscenze in più lezioni: `Il quadrato ha 4 lati`, `Il quadrato ha quattro angoli retti`, `Nel quadrato i lati sono uguali`. Quando il requisito è soddisfatto, appare la nuova abilità `disegna quadrato` senza introdurre un nuovo comando cablato per quella specifica forma. Il motore generalizza anche a poligoni regolari con 3–12 lati se descritti in modo completo: per esempio `impara geometria: la figura stellina ha cinque lati uguali ed è un poligono regolare`, poi `disegna stellina lato 170`.
+
+Comandi: `aiuto disegno`, `impara geometria: ...`, `memoria associazioni`, `associazioni X`, `genera codice: X`, `disegna X lato N` (dimensioni 40–500 dp). `Lista cervello` e `Approfondisci X` integrano la memoria associativa.
+
+**Limiti**: codice Java generato come sorgente ma **non compilato né iniettato nel sistema Android a runtime**. L'esecutore interpreta esclusivamente un insieme vincolato e validato di istruzioni vettoriali. Un testo narrativo qualsiasi, un manuale o una pagina web **non possono aggiungere arbitrariamente codice eseguibile**. I nuovi comandi nascono da programmi memorizzati (dati), non da una riscrittura autonoma dell'APK, e non sono neuroni prodotti spontaneamente dal Language Core. Il parser riconosce solo proprietà geometriche semplici; la classificazione semantica è euristica, e l'uso su device va verificato.
