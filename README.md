@@ -1,2 +1,0 @@
-# AmpyAI-Core
-Experiment
