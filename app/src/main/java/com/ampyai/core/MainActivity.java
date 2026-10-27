@@ -329,7 +329,7 @@ public final class MainActivity extends Activity {
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(12), dp(12), dp(12), dp(16));
         scroll.addView(content);
-        TextView intro = brainText(detailed ? "🐸 PSICOF RÅG — STRUTTURA REALE"
+        TextView intro = brainText(detailed ? "🐸 PSICOFRÅG — STRUTTURA REALE"
                 : "🐸 CERVELLO — MAPPA DELLA RETE", 17, 0xFF91F2BC);
         content.addView(intro);
         TextView stat = brainText(brainDetails(current), 12, 0xFFC3D9DD);
