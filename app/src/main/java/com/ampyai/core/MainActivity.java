@@ -61,7 +61,7 @@ public final class MainActivity extends Activity {
             if (Build.VERSION.SDK_INT >= 30) {
                 Insets system = insets.getInsets(WindowInsets.Type.systemBars());
                 top = system.top;
-                bottom = system.bottom;
+                bottom = Math.max(system.bottom, insets.getInsets(WindowInsets.Type.ime()).bottom);
             } else {
                 top = insets.getSystemWindowInsetTop();
                 bottom = insets.getSystemWindowInsetBottom();
