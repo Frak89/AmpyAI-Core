@@ -210,18 +210,18 @@ public final class FragNeuralTrainer {
                 for (int c = 0; c < OUTPUTS; c++)
                     outGrad[c] = probs[c] - (c == example.label ? 1f : 0f);
                 float[] hiddenGrad = new float[model.hidden.length];
-                for (int h = 0; h < HIDDEN; h++) {
+                for (int h = 0; h < model.hidden.length; h++) {
                     float grad = 0;
                     for (int c = 0; c < OUTPUTS; c++)
                         grad += model.output[c][h] * outGrad[c];
                     hiddenGrad[h] = hidden[h] > 0 ? grad : 0;
                 }
                 for (int c = 0; c < OUTPUTS; c++) {
-                    for (int h = 0; h < HIDDEN; h++)
+                    for (int h = 0; h < model.hidden.length; h++)
                         model.output[c][h] -= rate * outGrad[c] * hidden[h];
                     model.outputBias[c] -= rate * outGrad[c];
                 }
-                for (int h = 0; h < HIDDEN; h++) {
+                for (int h = 0; h < model.hidden.length; h++) {
                     for (int f = 0; f < FEATURES; f++) {
                         if (input[f] != 0f)
                             model.hidden[h][f] -= rate * hiddenGrad[h] * input[f];
@@ -260,7 +260,7 @@ public final class FragNeuralTrainer {
     }
 
     private static void forward(Model model, float[] x, float[] hidden, float[] logits) {
-        for (int h = 0; h < HIDDEN; h++) {
+        for (int h = 0; h < model.hidden.length; h++) {
             float z = model.hiddenBias[h];
             for (int f = 0; f < FEATURES; f++)
                 if (x[f] != 0f) z += x[f] * model.hidden[h][f];
@@ -268,7 +268,7 @@ public final class FragNeuralTrainer {
         }
         for (int c = 0; c < OUTPUTS; c++) {
             float z = model.outputBias[c];
-            for (int h = 0; h < HIDDEN; h++) z += model.output[c][h] * hidden[h];
+            for (int h = 0; h < model.hidden.length; h++) z += model.output[c][h] * hidden[h];
             logits[c] = z;
         }
     }
