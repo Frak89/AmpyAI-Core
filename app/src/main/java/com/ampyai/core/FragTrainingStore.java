@@ -21,11 +21,13 @@ import java.util.List;
 /** Persistent, local examples and binary neural weights. No network or cloud. */
 public final class FragTrainingStore extends SQLiteOpenHelper {
     private final File weights;
+    private final File legacyWeights;
     private static final int MAGIC = 0x46524147; // FRAG
-    private static final int FORMAT = 1;
+    private static final int FORMAT = 2;
     public FragTrainingStore(Context context) {
         super(context, "frag_training_v2.db", null, 1);
-        weights = new File(context.getFilesDir(), "frag_ui_model_v2.bin");
+        weights = new File(context.getFilesDir(), "frag_ui_model_v3.bin");
+        legacyWeights = new File(context.getFilesDir(), "frag_ui_model_v2.bin");
     }
 
     @Override public void onCreate(SQLiteDatabase db) {
@@ -148,7 +150,7 @@ public final class FragTrainingStore extends SQLiteOpenHelper {
             out.writeInt(MAGIC);
             out.writeInt(FORMAT);
             out.writeInt(FragNeuralTrainer.FEATURES);
-            out.writeInt(FragNeuralTrainer.HIDDEN);
+            out.writeInt(m.hidden.length);
             out.writeInt(FragNeuralTrainer.LABELS.length);
             out.writeInt(m.examples);
             out.writeInt(m.epochs);
@@ -167,15 +169,20 @@ public final class FragTrainingStore extends SQLiteOpenHelper {
     }
 
     public synchronized FragNeuralTrainer.Model loadModel() throws IOException {
-        if (!weights.exists()) return null;
+        File source = weights.exists() ? weights : legacyWeights;
+        if (!source.exists()) return null;
         try (DataInputStream in = new DataInputStream(
-                new BufferedInputStream(new FileInputStream(weights)))) {
-            if (in.readInt() != MAGIC || in.readInt() != FORMAT ||
-                in.readInt() != FragNeuralTrainer.FEATURES ||
-                in.readInt() != FragNeuralTrainer.HIDDEN ||
-                in.readInt() != FragNeuralTrainer.LABELS.length)
+                new BufferedInputStream(new FileInputStream(source)))) {
+            int magic = in.readInt();
+            int version = in.readInt();
+            int inputs = in.readInt();
+            int neurons = in.readInt();
+            int outputs = in.readInt();
+            if (magic != MAGIC || (version != FORMAT && version != 1) ||
+                inputs != FragNeuralTrainer.FEATURES || neurons < 8 ||
+                neurons > 128 || outputs != FragNeuralTrainer.LABELS.length)
                 throw new IOException("Formato pesi non valido.");
-            FragNeuralTrainer.Model model = new FragNeuralTrainer.Model();
+            FragNeuralTrainer.Model model = new FragNeuralTrainer.Model(neurons);
             model.examples = in.readInt();
             model.epochs = in.readInt();
             model.validationAccuracy = in.readDouble();
@@ -189,5 +196,28 @@ public final class FragTrainingStore extends SQLiteOpenHelper {
                 model.outputBias[j] = in.readFloat();
             return model;
         }
+    }
+
+    public synchronized int countForLabel(String label) {
+        int kind = FragNeuralTrainer.label(label);
+        if (kind < 0) return 0;
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT COUNT(*) FROM examples WHERE label=?",
+                new String[]{FragNeuralTrainer.LABELS[kind]})) {
+            return c.moveToFirst() ? c.getInt(0) : 0;
+        }
+    }
+
+    public synchronized List<String> samples(String label, int limit) {
+        List<String> result = new ArrayList<>();
+        int kind = FragNeuralTrainer.label(label);
+        if (kind < 0) return result;
+        try (Cursor c = getReadableDatabase().query("examples",
+                new String[]{"text"}, "label=?",
+                new String[]{FragNeuralTrainer.LABELS[kind]},
+                null,null,"id DESC",String.valueOf(Math.min(5, Math.max(1, limit))))) {
+            while(c.moveToNext()) result.add(c.getString(0));
+        }
+        return result;
     }
 }

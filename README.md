@@ -1,72 +1,40 @@
-# AmpyAI Core — Fråg 🐸 Rev2
+# Fråg 🐸 V3 — cervello ispezionabile e modellabile
 
-**Fråg** is an independently implemented on-device assistant inside the **AmpyDev** visual editor. It is a small symbolic AI/retrieval prototype, not a wrapper around an external LLM.
+Fråg è un esperimento di IA ibrida locale per Android: editor AmpyDev, classificatore neurale supervisionato sviluppato in Java, memoria grafica/di ricerca con fonti e visualizzazione effettiva del modello. Non è un LLM.
 
-## Install / test
+## Comandi nuovi di V3
 
-1. Open the project in Android Studio (Java 17, Android SDK 36, Gradle 8.13).
-2. Build with `gradle :app:assembleDebug`, or open GitHub Actions > Android debug APK.
-3. A successful workflow uploads `AmpyAI-Core-Frag-Rev2-debug`, a ZIP containing `app-debug.apk`.
-4. Install the APK on Android 8+; integration on an actual phone still needs testing.
-5. Tap **AmpyDev** at the top right to open Fråg's chat and activity feed.
+| Comando | Funzione |
+|---|---|
+| `Cervello` | Apre la visualizzazione dello stato reale della rete, architettura e training |
+| `Psicofråg` | Microscopio neurale: ingressi selezionati, neuroni nascosti, 7 output, probabilità e pesi reali campionati |
+| `Lista cervello` | Tutte le funzionalità effettivamente installate e rispettivi comandi |
+| `Approfondisci pulsante` | Cosa sa fare su una categoria + numero di esempi effettivamente memorizzati |
+| `Approfondisci modella cervello` | Spiegazione tecnica di quella funzione con limiti |
+| `Approfondisci Android` | Solo vere fonti già salvate se presenti; altrimenti dichiarazione esplicita che non lo conosce |
+| `Modella cervello 48 100` | Prepara una rete con 48 neuroni nascosti e 100 epoche per il prossimo training |
+| `esempi base` | Importa 70 esempi etichettati |
+| `insegna: metti un bottone Conferma => pulsante` | Aggiunge un esempio supervisionato |
+| `importa dataset` | Apre JSON o JSONL di esempi dal telefono |
+| `allena Fråg` | Addestra offline con SGD e backprop, aggiorna log e grafico di Psicofråg |
+| `statistiche training` | Numero esempi e accuratezza holdout del modello |
+| `prova AI: inserisci un pulsante` | Classificazione non esecutiva |
+| `esegui AI: metti un pulsante con scritto Prova` | Classificazione + comando UI, solo se soglia di confidenza alta |
 
-## Try Fråg
+## Psicofråg
 
-- `crea dashboard stile cyberpunk`: the UI redraws immediately; tap **Mi piace**, **No**, or **Altro**.
-- `proponi uno stile per fotografia`: Fråg ranks styles by feedback and learned word associations.
-- `crea schermata login stile minimal`
-- `cerca online material design`: makes actual requests to Wikipedia (Italian) and GitHub public repository search.
-- `cerca online Siemens S7-1500`: searches those same two limited services; this is not a general web search engine.
-- `crea pulsante Salva`, `aggiungi titolo Ciao`, `sfondo blu`, `annulla`, `aiuto`
+La vista mostra le **dimensioni effettive** 384 → N → 7 del file pesi caricato, la situazione "NON ADDESTRATO" se non esiste un modello, e la richiesta di architettura per il prossimo addestramento. Quando esiste il modello, i nodi disegnati rappresentano un **sottoinsieme numerato di neuroni reali**, scelto dalle attivazioni calcolate sulla frase che si può cambiare nell'editor. Le linee sono un campione dei **pesi reali**. Non disegna un numero fittizio di neuroni e non pretende di mostrare processi di pensiero.
 
-## What works
+Durante l'allenamento col dialogo aperto, il grafico aggiorna i campioni di attivazioni e la perdita dalle epoche effettive. La progressione è visibile anche nel log LIVE dell'editor. Un training nuovo inizializza un nuovo modello con il numero di neuroni scelto: **non si tratta di una crescita neurale organica spontanea** e la modifica dei neuroni non modifica i pesi salvati finché non si completa il nuovo training.
 
-Fråg shows real stages in a **LIVE** log while classifying a request, rendering previews, awaiting style approval, fetching sources, and saving local results. No fake progress timer is used. Asynchronous online results display clickable links and source names. Previous research snippets are stored with their original URL in local SQLite and can be reused if online fetching returns no results for the same query.
+## Compatibilità e persistenza
 
-Approval and rejection update both style preference counters and a tiny online-trained bag-of-words association system persisted on the device in private SharedPreferences. This can alter later suggestions without requiring a network connection.
+La database degli esempi `frag_training_v2.db` si conserva in Rev3. Fråg legge `frag_ui_model_v2.bin` quando ancora non esiste il nuovo file `frag_ui_model_v3.bin`; il successivo training salva dinamicamente il nuovo formato. Come nella V2, le capacità neuronali sono limitate a 7 classi di interfaccia. La lunghezza della finestra di testo di input è limitata a 384 caratteristiche hash numeriche indipendentemente dai neuroni scelti.
 
-## Modules
+Strumenti della V2 ancora presenti: anteprime live di stile, feedback, ricerca esplicita (Wikipedia + repository GitHub pubbliche), cache locale delle fonti, creazione di layout semplici e comandi di base.
 
-- `FragBrain.java`: original symbolic intent router and local learned preference weights.
-- `FragStyle.java`: visual style definitions used by the native canvas.
-- `FragResearch.java`: fixed HTTPS public Wikipedia/GitHub source providers with limits and timeouts.
-- `FragKnowledgeStore.java`: SQLite index of attributed research snippets.
-- `AmpyDevChatView.java`: chat, activity log and functional style-feedback buttons.
-- `UiDocument.java` / `AmpyCanvasView.java`: persistent JSON scene graph and real Android view renderer.
-- `DevModule.java` / `BasicUiModule.java`: extensible command interface and existing Rev1 UI commands.
-- `MainActivity.java`: orchestrator for immediate visual updates and asynchronous research.
+## Build
 
-## Honest limitations and privacy
+Java 17, Gradle 8.13, Android SDK 36; usa Android Studio o il workflow GitHub **Android debug APK** nella branch `feature/frag-rev3`. Il workflow esegue `testDebugUnitTest` e `assembleDebug`, quindi pubblica `AmpyAI-Core-Frag-Rev3-debug` con `app-debug.apk`.
 
-Fråg Rev2 is an original **symbolic learning agent**, not a pretrained or newly trained Transformer/LLM. It cannot understand arbitrary language, perform broad web browsing, generate arbitrary app code, independently ingest PDF manuals, or train a large neural network. Those capabilities require future modules. Current style learning records explicit feedback and associations only.
-
-Research occurs only after an explicit search command. It sends your query to the selected public services (Wikipedia and GitHub). Public source results can fail because of network restrictions, rate limits or API changes; Fråg reports those failures instead of inventing results. It never executes downloaded code. No account, cloud AI, tracking service or pretrained neural model is required.
-
-## Fråg V2 — Trainer neurale originale (funzionante offline)
-
-Apri AmpyDev. I comandi di addestramento sono intercettati prima del normale editor grafico.
-
-1. **`aiuto training`** — mostra tutte le istruzioni.
-2. **`esempi base`** — inserisce 70 esempi locali già etichettati (10 per classe).
-3. **`insegna: metti un tasto con scritto Prova => pulsante`** — aggiunge il tuo esempio supervisionato.
-4. **`importa dataset`** — scegli un file JSON/JSONL locale, massimo 1 MB / 5000 esempi.
-5. **`allena Fråg`** — avvia 65 epoche di vera retropropagazione su una piccola rete originale; il log LIVE mostra avanzamento e perdita.
-6. **`statistiche training`** — numero di esempi, epoche, accuratezza su holdout stratificato.
-7. **`prova AI: inserisci un bottone con scritto Conferma`** — classificazione soltanto, non modifica il canvas.
-8. **`esegui AI: metti un pulsante con scritto Conferma`** — applica al canvas soltanto se la previsione supera le soglie di confidenza e il testo da inserire è esplicito.
-
-Etichette consentite: `pulsante`, `titolo`, `testo`, `campo`, `scheda`, `login`, `dashboard`. È supportata anche la forma inglese canonica di ogni etichetta.
-
-**Formato JSONL** (una riga JSON per esempio):
-
-```jsonl
-{"text":"fammi un bottone con scritto Salva","label":"button"}
-{"text":"aggiungi un titolo con scritto Benvenuto","label":"title"}
-{"text":"crea una pagina di accesso","label":"login"}
-```
-
-Puoi importare anche un array JSON di oggetti con campi `text` e `label`. Gli esempi vengono conservati nel database privato `frag_training_v2.db`; il modello addestrato viene salvato in `frag_ui_model_v2.bin` e ricaricato ai successivi avvii.
-
-### Dettagli tecnici e limiti
-
-Il Neural Core è un classificatore sviluppato in Java puro senza pesi o modelli esterni: 384 caratteristiche hash di parole e sottoparole, strato nascosto ReLU da 32 unità, output softmax di 7 classi e aggiornamento SGD con backpropagation. Un sottoinsieme stratificato degli esempi viene escluso dalla retropropagazione e usato per la validazione. La percentuale ottenuta è valida solo per quel piccolo dataset e non indica una capacità generale di comprensione. L'apprendimento da nuovi esempi richiede di eseguire nuovamente `allena Fråg`. L'importazione di PDF e l'addestramento di LLM generativi **non** sono inclusi nella V2.
+**Limiti reali:** ancora niente apprendimento libero da PDF, riconoscimento universale, ragionamento generale, acquisizione spontanea di nuovi comandi operativi né auto-modifica del codice. Il comando `Approfondisci` è fondato solo su capacità nel registro, dataset etichettati e fonti già archiviate: non inventa comprensione. Il grafico mostra valori matematici veri, non attività di coscienza.
