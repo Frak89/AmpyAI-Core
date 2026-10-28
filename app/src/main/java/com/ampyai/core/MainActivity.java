@@ -542,10 +542,11 @@ public final class MainActivity extends Activity {
                 }
                 photoLabel=label;
                 Intent camera=new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
-                if(camera.resolveActivity(getPackageManager())==null){
-                    log("Nessuna app fotocamera disponibile.");return;
+                try {
+                    startActivityForResult(camera,PHOTO_REQUEST);
+                } catch(android.content.ActivityNotFoundException ex) {
+                    log("Nessuna app fotocamera compatibile disponibile.");
                 }
-                startActivityForResult(camera,PHOTO_REQUEST);
             }).show();
     }
 
