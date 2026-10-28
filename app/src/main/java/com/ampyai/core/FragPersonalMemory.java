@@ -15,16 +15,22 @@ import java.util.regex.Pattern;
  * Nothing is seeded. These are explicitly authored, not silently scraped.
  */
 public final class FragPersonalMemory {
-    private final File lessons,lexicon;
+    private final File lessons,lexicon,observations,poems;
     private static final Pattern KEY=Pattern.compile("[a-z0-9_\\-]{1,32}");
     public FragPersonalMemory(File root) {
         File home=new File(root,"frag_memory/personal");
         lessons=new File(home,"lessons");
         lexicon=new File(home,"lexicon");
+        observations=new File(home,"observations");
+        poems=new File(home,"poems");
         if(!lessons.exists()&&!lessons.mkdirs())
             throw new IllegalStateException("Cartella lezioni non disponibile");
         if(!lexicon.exists()&&!lexicon.mkdirs())
             throw new IllegalStateException("Cartella parole non disponibile");
+        if(!observations.exists()&&!observations.mkdirs())
+            throw new IllegalStateException("Cartella immagini non disponibile");
+        if(!poems.exists()&&!poems.mkdirs())
+            throw new IllegalStateException("Cartella poesie non disponibile");
     }
     public static final class Lexeme {
         public final String word,meaning,pronunciation;
@@ -84,7 +90,28 @@ public final class FragPersonalMemory {
                 lines[2].replaceFirst("^PRONUNCIA GUIDATA: ",""));
     }
     public synchronized int count(){
-        return countFiles(lessons)+countFiles(lexicon);
+        return countFiles(lessons)+countFiles(lexicon)+countFiles(observations);
+    }
+    public synchronized boolean saveObservation(String label,byte[] png) throws IOException {
+        if(png==null||png.length<100)throw new IOException("Foto PNG vuota.");
+        String id=name(label);
+        File txt=new File(observations,id+".txt");
+        boolean fresh=!txt.exists();
+        write(txt,"ETICHETTA UTENTE: "+label+"\n"+
+                "OSSERVAZIONE: foto etichettata, non classificazione automatica.\n");
+        File image=new File(observations,id+".png");
+        try(FileOutputStream out=new FileOutputStream(image))out.write(png);
+        return fresh;
+    }
+    public synchronized void savePoem(String text) throws IOException {
+        if(text==null||text.isEmpty())return;
+        write(new File(poems,"poem_"+System.currentTimeMillis()+".txt"),text);
+    }
+    public synchronized String lastPoem() throws IOException {
+        File[] all=poems.listFiles((dir,n)->n.endsWith(".txt"));
+        if(all==null||all.length==0)return null;
+        java.util.Arrays.sort(all,(a,b)->Long.compare(b.lastModified(),a.lastModified()));
+        return read(all[0]);
     }
     private static int countFiles(File root) {
         File[] a=root.listFiles((dir,s)->s.endsWith(".txt"));return a==null?0:a.length;
@@ -95,6 +122,10 @@ public final class FragPersonalMemory {
         File[] b=lexicon.listFiles((dir,s)->s.endsWith(".txt"));
         if(a!=null)java.util.Collections.addAll(list,a);
         if(b!=null)java.util.Collections.addAll(list,b);
+        File[] c=observations.listFiles();
+        File[] d=poems.listFiles((dir,n)->n.endsWith(".txt"));
+        if(c!=null)java.util.Collections.addAll(list,c);
+        if(d!=null)java.util.Collections.addAll(list,d);
         return list;
     }
 }
