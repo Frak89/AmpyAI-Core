@@ -475,9 +475,10 @@ public final class MainActivity extends Activity {
     }
     private void show3D(){
         Frag3DView cube=new Frag3DView(this);
+        android.widget.FrameLayout frame=new android.widget.FrameLayout(this);
+        frame.addView(cube,new android.widget.FrameLayout.LayoutParams(-1,dp(330)));
         new AlertDialog.Builder(this).setTitle("3D wireframe · trascina con il dito")
-            .setView(cube).setPositiveButton("Chiudi",null).show();
-        cube.getLayoutParams().height=dp(330);
+            .setView(frame).setPositiveButton("Chiudi",null).show();
     }
     private void showMusic(){
         LinearLayout layout=new LinearLayout(this);
