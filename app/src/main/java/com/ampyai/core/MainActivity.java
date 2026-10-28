@@ -581,12 +581,13 @@ public final class MainActivity extends Activity {
             String verse=rawPoem(worker,"io");
             personal.savePoem(verse);
         }
+        final int observedWidth=worker.hidden;
         runOnUiThread(()->{
             if(destroyed)return;
             refreshStatus();
             refreshHelpIfOpen();
             log((newConcept?"Nuovo concetto salvato. ":"Concetto aggiornato. ")+
-                "Neuroni nascosti: "+worker.hidden+
+                "Neuroni nascosti: "+observedWidth+
                 ". I versi generati sono bozze, non poesia consapevole.");
         });
     }
