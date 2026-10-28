@@ -134,6 +134,21 @@ public final class PrimitiveLM {
         for(int v=0;v<VOCAB;v++)p[v]/=(float)sum;
         return p;
     }
+    /** Mean prediction loss before an incremental lesson, same input as the trainer. */
+    public static float evaluateLoss(Model m,String raw) {
+        String sample=normalize(raw);
+        int len=Math.min(sample.length(),trainingCharacters(m.hidden));
+        if(len<80)return Float.NaN;
+        float[] hidden=new float[m.hidden],logits=new float[VOCAB];
+        double total=0;
+        for(int pos=0;pos<len;pos++) {
+            forward(m,context(sample,pos),hidden,logits);
+            float[] probabilities=softmax(logits,1f);
+            total-=Math.log(Math.max(1e-8f,probabilities[id(sample.charAt(pos))]));
+        }
+        return (float)(total/len);
+    }
+
     public interface Listener {
         void onEpoch(int epoch, int epochs, float loss, int neurons);
     }
