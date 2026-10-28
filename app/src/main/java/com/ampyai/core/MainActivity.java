@@ -871,7 +871,9 @@ public final class MainActivity extends Activity {
     private void go(String raw) {
         String query=raw.trim();
         if(query.isEmpty())return;
-        if(query.equalsIgnoreCase("psicofråg")||query.equalsIgnoreCase("psicofrag")) {
+        if(query.equalsIgnoreCase("psicofråg")||
+            query.equalsIgnoreCase("psicofrag")||
+            query.equalsIgnoreCase("neuroni")) {
             showBrain();return;
         }
         if(query.equalsIgnoreCase("help") || query.equalsIgnoreCase("aiuto")

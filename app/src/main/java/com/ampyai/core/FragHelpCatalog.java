@@ -43,7 +43,12 @@ public final class FragHelpCatalog {
     public static List<Entry> basics() {
         List<Entry> all=new ArrayList<>();
         all.add(command("Psicofråg","Cervello vivo: neuroni, loss, pesi e generazione.",
-                "Psicofråg","Modello neurale a caratteri: la crescita fisica non dimostra comprensione."));
+                "Psicofråg","Permette di inserire il numero esatto di neuroni, oppure scegliere AUTO "+
+                "con limite numerico. La crescita non dimostra comprensione."));
+        all.add(command("Neuroni","Configura il numero di neuroni nascosti e la crescita automatica.",
+                "neuroni","Apri Psicofråg e inserisci un intero: ad esempio 777, 1024 o 4096 "+
+                "se compatibile con la memoria del telefono. In AUTO scegli un tetto e Fråg "+
+                "espande quando acquisisce concetti o due training consecutivi rallentano."));
         all.add(command("Help / Aiuto","Apre questa guida dinamica, anche senza rete.",
                 "help","La guida viene ricostruita dai moduli e dai file davvero presenti."));
         all.add(command("Cerca Internet","Cerca una parola nel browser integrato.",

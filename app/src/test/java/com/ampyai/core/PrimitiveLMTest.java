@@ -18,7 +18,7 @@ public final class PrimitiveLMTest {
         assertEquals(before,expanded.input[1][3],0);
         assertEquals(out,expanded.output[0][1],0);
         assertEquals(16+PrimitiveLM.GROWTH_PER_CONCEPT*3,expanded.hidden);
-        assertEquals(256,PrimitiveLM.widthForConcepts(10000));
+        assertEquals(PrimitiveLM.MAX_HIDDEN,PrimitiveLM.widthForConcepts(10000));
     }
     @Test public void trainingMakesActualWeightChanges() {
         PrimitiveLM.Model m=PrimitiveLM.blank();
