@@ -28,6 +28,12 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.speech.tts.TextToSpeech;
+import android.media.AudioTrack;
+import android.media.AudioManager;
+import android.media.AudioFormat;
+import java.nio.file.StandardOpenOption;
+import java.util.Date;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
@@ -58,6 +64,11 @@ public final class MainActivity extends Activity {
     private final AtomicBoolean busy=new AtomicBoolean(false);
     private final Handler handler=new Handler(Looper.getMainLooper());
     private ConceptStore concepts;
+    private FragPersonalMemory personal;
+    private TextToSpeech speech;
+    private boolean speechReady;
+    private String photoLabel="";
+    private static final int PHOTO_REQUEST=403;
     private ModelStore modelStore;
     private volatile PrimitiveLM.Model model;
     private LinearLayout root;
@@ -74,12 +85,18 @@ public final class MainActivity extends Activity {
         getWindow().setStatusBarColor(0xFF08131B);
         getWindow().setNavigationBarColor(0xFF08131B);
         concepts=new ConceptStore(getFilesDir());
+        personal=new FragPersonalMemory(getFilesDir());
+        speech=new TextToSpeech(this, status -> {
+            speechReady=status==TextToSpeech.SUCCESS;
+            if(speechReady && speech!=null)
+                speech.setLanguage(Locale.ITALIAN);
+        });
         modelStore=new ModelStore(getFilesDir());
         try {model=modelStore.load();}
         catch(IOException ex) {
             model=PrimitiveLM.blank();
         }
-        int needed=PrimitiveLM.widthForConcepts(concepts.count());
+        int needed=PrimitiveLM.widthForConcepts(concepts.count()+personal.count());
         if(model.hidden<needed)model=PrimitiveLM.expanded(model,needed);
 
         root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);
@@ -127,13 +144,16 @@ public final class MainActivity extends Activity {
         Button psico=button("Psicofråg");
         Button learn=button("Studia pagina");
         Button memory=button("Memoria");
+        Button lab=button("Laboratorio");
         actions.addView(psico,new LinearLayout.LayoutParams(0,dp(44),1));
         actions.addView(learn,new LinearLayout.LayoutParams(0,dp(44),1));
         actions.addView(memory,new LinearLayout.LayoutParams(0,dp(44),1));
+        actions.addView(lab,new LinearLayout.LayoutParams(0,dp(44),1));
         root.addView(actions);
         psico.setOnClickListener(v->showBrain());
         learn.setOnClickListener(v->captureCurrentPage());
         memory.setOnClickListener(v->showMemory());
+        lab.setOnClickListener(v->showLaboratory());
 
         webTitle=label("Sfoglia Internet. Fråg impara dalle pagine che apri.",11,
                 0xFF96ACB7);
@@ -176,6 +196,356 @@ public final class MainActivity extends Activity {
         root.addView(activity);
         refreshStatus();
         root.requestApplyInsets();
+    }
+
+
+    /** In-app laboratory only; it does not redefine arbitrary web search prompts. */
+    private void showLaboratory() {
+        ScrollView scroll=new ScrollView(this);
+        LinearLayout panel=new LinearLayout(this);
+        panel.setPadding(dp(12),dp(10),dp(12),dp(12));
+        panel.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(panel);
+        TextView intro=label("MODULI FRÅG · ogni capacità ha il proprio codice e memoria.\n"+
+                "Sono esperimenti espliciti: Fråg non conosce già il mondo, "+
+                "non si autoprogramma e non possiede sentimenti umani.",12,0xFF16242B);
+        panel.addView(intro);
+        addLabButton(panel,"🧠 Insegnami una lezione",()->showTeacher());
+        addLabButton(panel,"🗣️ La tua lingua inventata · dizionario + voce",()->showLanguage());
+        addLabButton(panel,"💬 Parliamo / frasi nuove",()->showTalk());
+        addLabButton(panel,"✍️ Poesie emergenti (modello reale)",()->showPoem());
+        addLabButton(panel,"📱 Conosci il mio Pixel",()->showDevice());
+        addLabButton(panel,"🧩 FRAP · codice vettoriale / SVG",()->showFrap(null));
+        addLabButton(panel,"🐸 Disegna te stesso con FRAP",()->showSelfPortrait());
+        addLabButton(panel,"🧊 Disegno 3D · ruota il cubo",()->show3D());
+        addLabButton(panel,"🎵 Melodie / sei timbri sperimentali",()->showMusic());
+        addLabButton(panel,"📷 Fotocamera · insegnami un oggetto",()->showCameraLesson());
+        new AlertDialog.Builder(this).setTitle("🐸 Laboratorio modulare")
+                .setView(scroll).setPositiveButton("Chiudi",null).show();
+    }
+
+    private void addLabButton(LinearLayout panel,String label,Runnable handler) {
+        Button b=button(label);
+        b.setOnClickListener(v->handler.run());
+        panel.addView(b,new LinearLayout.LayoutParams(-1,dp(47)));
+    }
+
+    private void showTeacher() {
+        LinearLayout content=new LinearLayout(this);
+        content.setPadding(dp(18),dp(8),dp(18),dp(4));
+        content.setOrientation(LinearLayout.VERTICAL);
+        EditText topic=new EditText(this);
+        topic.setSingleLine(true);topic.setHint("Nome concetto, ad es. quadrato");
+        content.addView(topic);
+        EditText lesson=new EditText(this);
+        lesson.setHint("Scrivi almeno 80 caratteri per insegnare una regola o un concetto...");
+        lesson.setMinLines(5);lesson.setMaxLines(10);
+        content.addView(lesson);
+        new AlertDialog.Builder(this).setTitle("Insegnami una cosa")
+                .setView(content).setNegativeButton("Annulla",null)
+                .setPositiveButton("Impara",(dialog,which)->{
+                    String name=topic.getText().toString(),text=lesson.getText().toString();
+                    if(!busy.compareAndSet(false,true)){
+                        log("Attendi l'addestramento in corso.");return;
+                    }
+                    learning.execute(()->{
+                        try{
+                            boolean fresh=personal.lesson(name,text);
+                            updateBrainAfterLesson(text,fresh);
+                        }catch(Exception ex){log("Lezione non appresa: "+ex.getMessage());}
+                        finally{busy.set(false);}
+                    });
+                }).show();
+    }
+
+    /**
+     * Adding neurons is real structural expansion, not understanding.
+     * A new lesson triggers actual training from user-authored material.
+     */
+    private void updateBrainAfterLesson(String corpus,boolean newConcept) throws IOException {
+        int desired=PrimitiveLM.widthForConcepts(concepts.count()+personal.count());
+        PrimitiveLM.Model worker=PrimitiveLM.expanded(model,Math.max(model.hidden,desired));
+        if(corpus!=null && PrimitiveLM.normalize(corpus).length()>=80){
+            PrimitiveLM.train(worker,corpus,3,(epoch,total,loss,neurons)->
+                log("Lezione: epoca "+epoch+"/"+total+" · loss "+
+                    String.format(Locale.ITALY,"%.3f",loss)+
+                    " · neuroni "+neurons));
+        }
+        modelStore.save(worker);
+        model=worker;
+        if(worker.trainingSessions>0 && newConcept){
+            String verse=rawPoem(worker,"io");
+            personal.savePoem(verse);
+        }
+        runOnUiThread(()->{
+            if(destroyed)return;
+            refreshStatus();
+            log((newConcept?"Nuovo concetto salvato. ":"Concetto aggiornato. ")+
+                "Neuroni nascosti: "+worker.hidden+
+                ". I versi generati sono bozze, non poesia consapevole.");
+        });
+    }
+    private String rawPoem(PrimitiveLM.Model m,String seed){
+        StringBuilder verses=new StringBuilder("BOZZA GENERATA DALLA RETE\n");
+        for(int i=0;i<4;i++){
+            String line=PrimitiveLM.generate(m,seed,32, System.nanoTime()+i);
+            verses.append(line.replace('\n',' ').trim()).append('\n');
+        }
+        return verses.toString();
+    }
+
+    private void showLanguage() {
+        LinearLayout content=new LinearLayout(this);
+        content.setPadding(dp(14),dp(12),dp(14),dp(10));
+        content.setOrientation(LinearLayout.VERTICAL);
+        EditText word=new EditText(this),meaning=new EditText(this),pron=new EditText(this);
+        word.setHint("Parola inventata");meaning.setHint("Significato");
+        pron.setHint("Guida di pronuncia, scritta da te");
+        content.addView(word);content.addView(meaning);content.addView(pron);
+        Button speak=button("PROVA PRONUNCIA");
+        speak.setOnClickListener(v->speak(pron.getText().toString()));
+        content.addView(speak);
+        Button recall=button("CERCA PAROLA GIA' INSEGNATA");
+        TextView known=label("",12,0xFF101C29);
+        recall.setOnClickListener(v->{
+            try {
+                FragPersonalMemory.Lexeme stored=personal.word(word.getText().toString());
+                known.setText(stored==null?"Parola non trovata":
+                        stored.word+": "+stored.meaning+
+                        "\nGuida vocalizzazione: "+stored.pronunciation);
+                if(stored!=null)pron.setText(stored.pronunciation);
+            }catch(Exception ex){known.setText(ex.getMessage());}
+        });
+        content.addView(recall);content.addView(known);
+        new AlertDialog.Builder(this).setTitle("Lingua inventata · crea vocabolario")
+                .setView(content).setNegativeButton("Chiudi",null)
+                .setPositiveButton("Memorizza",(dialog,which)->{
+                    if(!busy.compareAndSet(false,true)){log("Attendi: Fråg sta apprendendo.");return;}
+                    String w=word.getText().toString(),m=meaning.getText().toString(),
+                            p=pron.getText().toString();
+                    learning.execute(()->{
+                        try {
+                            boolean fresh=personal.teachWord(w,m,p);
+                            String teaching="La parola "+w+" ha il significato di "+m+
+                                ". La guida fonetica indicata dal mio insegnante è "+p+
+                                ". Questa parola appartiene a una lingua inventata da una persona.";
+                            updateBrainAfterLesson(teaching,fresh);
+                        }catch(Exception ex){log("Parola non appresa: "+ex.getMessage());}
+                        finally{busy.set(false);}
+                    });
+                }).show();
+    }
+
+    private void speak(String text){
+        if(text==null||text.trim().isEmpty()){
+            log("Inserisci la guida di pronuncia.");return;
+        }
+        if(!speechReady||speech==null){
+            log("Sintesi vocale non disponibile: verifica il motore TTS Android.");return;
+        }
+        speech.speak(text,TextToSpeech.QUEUE_FLUSH,null,"frag-voice");
+    }
+
+    private void showTalk(){
+        LinearLayout content=new LinearLayout(this);
+        content.setPadding(dp(14),dp(8),dp(14),dp(8));
+        content.setOrientation(LinearLayout.VERTICAL);
+        EditText line=new EditText(this);
+        line.setHint("Parla a Fråg: una parola, una domanda, un pensiero...");
+        content.addView(line);
+        TextView answer=label("La risposta è generata localmente. "+
+                "Se il modello è vuoto, deve prima apprendere da siti o lezioni.",
+                12,0xFF14202B);
+        content.addView(answer);
+        Button reply=button("GENERA RISPOSTA PRIMORDIALE");
+        reply.setOnClickListener(v->{
+            PrimitiveLM.Model brain=model;
+            if(brain.trainingSessions<1){
+                answer.setText("Non ho ancora imparato a generare parole. "+
+                    "Insegnami una lezione oppure fammi leggere un articolo.");return;
+            }
+            String result=PrimitiveLM.generate(brain,line.getText().toString(),110,
+                    System.nanoTime());
+            answer.setText(result+"\n\nNon è una risposta fondata sul significato.");
+        });
+        content.addView(reply);
+        Button aloud=button("LEGGI RISPOSTA");
+        aloud.setOnClickListener(v->speak(answer.getText().toString()));
+        content.addView(aloud);
+        new AlertDialog.Builder(this).setTitle("Parliamo · Fråg").
+                setView(content).setPositiveButton("Chiudi",null).show();
+    }
+
+    private void showPoem() {
+        LinearLayout layout=new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(12),dp(10),dp(12),dp(14));
+        EditText seed=new EditText(this);
+        seed.setHint("Inizio della poesia (facoltativo)");layout.addView(seed);
+        TextView result=label("",14,0xFF14202B);layout.addView(result);
+        try {
+            String last=personal.lastPoem();
+            if(last!=null)result.setText("Ultima bozza salvata:\n"+last);
+        } catch(IOException ignored){}
+        Button generate=button("COMPONI 4 VERSI DAL MODELLO");
+        generate.setOnClickListener(v->{
+            if(model.trainingSessions<1) {
+                result.setText("Il cervello non ha ancora nessun training.");return;
+            }
+            String generated=rawPoem(model,seed.getText().toString());
+            result.setText(generated);
+            learning.execute(()->{
+                try {personal.savePoem(generated);}
+                catch(IOException ex){log("Impossibile salvare la bozza.");}
+            });
+        });
+        layout.addView(generate);
+        Button voice=button("LEGGI I VERSI");
+        voice.setOnClickListener(v->speak(result.getText().toString()));
+        layout.addView(voice);
+        new AlertDialog.Builder(this).setTitle("Poesia neurale · primordiale")
+                .setView(layout).setPositiveButton("Chiudi",null).show();
+    }
+
+    private void showDevice(){
+        FragDeviceProfile.Snapshot p=FragDeviceProfile.collect(this);
+        String message=p.describe()+"\n\n"+
+            (p.pixel7Pro() ? "Fråg riconosce i metadati del tuo Google Pixel 7 Pro.":
+                            "Questo dispositivo non dichiara il nome Pixel 7 Pro.")+
+            "\n\nIntegrazione: dati tecnici Android accessibili all'app; "+
+            "non conosce file privati, messaggi, contatti o localizzazione."+
+            "\nIl colore dello stato diventa caldo se la batteria scende sotto il 20%.";
+        new AlertDialog.Builder(this).setTitle("Conosco il mio dispositivo")
+                .setMessage(message).setPositiveButton("Chiudi",null).show();
+        refreshStatus();
+    }
+
+    private void showFrap(String initial) {
+        LinearLayout layout=new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(12),dp(8),dp(12),dp(8));
+        EditText name=new EditText(this);
+        name.setHint("Nome modulo, es. figura1");
+        layout.addView(name);
+        EditText code=new EditText(this);
+        code.setHint("line 0.1 0.1 0.9 0.1\n"+
+              "rect 0.3 0.3 0.4 0.4\ncircle 0.5 0.5 0.2");
+        code.setMinLines(4);
+        code.setText(initial==null?"":initial);
+        layout.addView(code);
+        FrapCanvasView picture=new FrapCanvasView(this);
+        layout.addView(picture,new LinearLayout.LayoutParams(-1,dp(260)));
+        TextView errors=label("",12,0xFF172533);layout.addView(errors);
+        Button preview=button("PREVISUALIZZA FRAP");
+        preview.setOnClickListener(v->{
+            try{
+                FrapEngine.Program p=FrapEngine.parse(code.getText().toString());
+                picture.render(p);
+                errors.setText("Programma validato: "+p.shapes.size()+" primitive.");
+            }catch(Exception ex){errors.setText(ex.getMessage());}
+        });
+        layout.addView(preview);
+        ScrollView scroll=new ScrollView(this);scroll.addView(layout);
+        new AlertDialog.Builder(this).setTitle("FRAP · editor SVG")
+            .setView(scroll).setNegativeButton("Chiudi",null)
+            .setPositiveButton("Salva modulo",(dialog,which)->{
+                try {
+                    String tag=name.getText().toString().trim().toLowerCase(Locale.ROOT);
+                    if(!tag.matches("[a-z0-9_-]{1,32}"))
+                        throw new IllegalArgumentException("Nome modulo: 1–32 lettere/numeri.");
+                    String source=code.getText().toString();
+                    FrapEngine.Program program=FrapEngine.parse(source);
+                    File dir=new File(getFilesDir(),"frag_memory/modules/frap");
+                    if(!dir.exists()&&!dir.mkdirs())throw new IOException("Cartella FRAP non scrivibile.");
+                    Files.write(new File(dir,tag+".frap").toPath(),
+                        source.getBytes(StandardCharsets.UTF_8));
+                    Files.write(new File(dir,tag+".svg").toPath(),
+                        program.toSvg().getBytes(StandardCharsets.UTF_8));
+                    log("Modulo FRAP salvato: "+tag+".frap e "+tag+".svg. "+
+                        "Nessun codice Java viene eseguito.");
+                }catch(Exception ex){log("FRAP rifiutato: "+ex.getMessage());}
+            }).show();
+    }
+
+    private void showSelfPortrait(){
+        String script=FragSelfPortrait.script(concepts.count(),personal.count());
+        showFrap(script);
+        log("Autoritratto costruito con un template geometrico. "+
+            "Modificalo: Fråg non ha ancora imparato a disegnarsi da sé.");
+    }
+    private void show3D(){
+        Frag3DView cube=new Frag3DView(this);
+        new AlertDialog.Builder(this).setTitle("3D wireframe · trascina con il dito")
+            .setView(cube).setPositiveButton("Chiudi",null).show();
+        cube.getLayoutParams().height=dp(330);
+    }
+    private void showMusic(){
+        LinearLayout layout=new LinearLayout(this);
+        layout.setPadding(dp(12),dp(12),dp(12),dp(12));
+        layout.setOrientation(LinearLayout.VERTICAL);
+        android.widget.Spinner instrument=new android.widget.Spinner(this);
+        android.widget.ArrayAdapter<String> adapter=new android.widget.ArrayAdapter<>(
+            this,android.R.layout.simple_spinner_dropdown_item,FragMusicLab.INSTRUMENTS);
+        instrument.setAdapter(adapter);layout.addView(instrument);
+        EditText sequence=new EditText(this);
+        sequence.setSingleLine(true);sequence.setHint("Insegna note, es. C3 E3 G3");
+        layout.addView(sequence);
+        TextView status=label("Seleziona uno strumento e insegna almeno una nota.",
+                12,0xFF11232B);
+        layout.addView(status);
+        Button generate=button("VARIAZIONE DELLE NOTE INSEGNATE");
+        generate.setOnClickListener(v->{
+            try {String result=FragMusicLab.variation(
+                    sequence.getText().toString(),(int)System.nanoTime());
+                sequence.setText(result);status.setText("Variazione generata: "+result);
+            }catch(Exception ex){status.setText(ex.getMessage());}
+        });
+        layout.addView(generate);
+        Button play=button("ASCOLTA TIMBRO SINTETICO");
+        play.setOnClickListener(v->{
+            String name=(String)instrument.getSelectedItem();
+            String notes=sequence.getText().toString();
+            learning.execute(()->{
+                try{
+                    short[] pcm=FragMusicLab.synthesize(name,notes);
+                    AudioTrack audio=new AudioTrack(AudioManager.STREAM_MUSIC,
+                        FragMusicLab.RATE,AudioFormat.CHANNEL_OUT_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT,pcm.length*2,
+                        AudioTrack.MODE_STATIC);
+                    try{
+                        if(audio.getState()!=AudioTrack.STATE_INITIALIZED)
+                            throw new IllegalStateException("AudioTrack non inizializzato.");
+                        audio.write(pcm,0,pcm.length);
+                        audio.play();
+                        Thread.sleep(pcm.length*1000L/FragMusicLab.RATE+100);
+                        audio.stop();
+                    }finally{audio.release();}
+                    log("Riproduzione terminata: "+name);
+                }catch(Exception ex){log("Audio non disponibile: "+ex.getMessage());}
+            });
+        });
+        layout.addView(play);
+        new AlertDialog.Builder(this).setTitle("Fråg · composizione sperimentale")
+            .setView(layout).setPositiveButton("Chiudi",null).show();
+    }
+
+    private void showCameraLesson(){
+        EditText name=new EditText(this);
+        name.setHint("Che oggetto mi stai mostrando?");
+        new AlertDialog.Builder(this).setTitle("Insegnami un oggetto dalla fotocamera")
+            .setView(name).setNegativeButton("Annulla",null)
+            .setPositiveButton("Apri fotocamera",(d,w)->{
+                String label=name.getText().toString().trim();
+                if(!label.matches("[a-zA-Z0-9_-]{1,32}")) {
+                    log("Usa un'etichetta semplice, senza spazi, 1–32 caratteri.");return;
+                }
+                photoLabel=label;
+                Intent camera=new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
+                if(camera.resolveActivity(getPackageManager())==null){
+                    log("Nessuna app fotocamera disponibile.");return;
+                }
+                startActivityForResult(camera,PHOTO_REQUEST);
+            }).show();
     }
 
     private void go(String raw) {
@@ -291,7 +661,7 @@ public final class MainActivity extends Activity {
             int discovered=0;
             for(String[] observation:observations)
                 if(concepts.save(observation[0],url,observation[1],pngBytes))discovered++;
-            int actual=concepts.count();
+            int actual=concepts.count()+personal.count();
             int previous=model.hidden;
             int desired=PrimitiveLM.widthForConcepts(actual);
             PrimitiveLM.Model worker=PrimitiveLM.expanded(model,Math.max(previous,desired));
@@ -324,7 +694,7 @@ public final class MainActivity extends Activity {
 
     private void showBrain() {
         PrimitiveLM.Model snapshot=model;
-        int count=concepts.count();
+        int count=concepts.count()+personal.count();
         ScrollView scroll=new ScrollView(this);
         LinearLayout layout=new LinearLayout(this);
         layout.setPadding(dp(12),dp(14),dp(12),dp(20));
@@ -332,7 +702,8 @@ public final class MainActivity extends Activity {
         layout.setBackgroundColor(0xFF10202A);
         scroll.addView(layout);
         TextView intro=label("PSICOFRÅG · CERVELLO REALE\n\n"+
-                "Concetti studiati: "+count+"\n"+
+                "Elementi appresi: "+count+" (Web: "+concepts.count()+
+                ", personali: "+personal.count()+")\n"+
                 "Neuroni nascosti: "+snapshot.hidden+" / "+PrimitiveLM.MAX_HIDDEN+"\n"+
                 "Parametri trainabili: "+PrimitiveLM.parameters(snapshot)+"\n"+
                 "Sessioni di training: "+snapshot.trainingSessions+"\n"+
@@ -442,6 +813,24 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);
+        if(request==PHOTO_REQUEST) {
+            if(result==RESULT_OK && data!=null && data.getExtras()!=null &&
+               data.getExtras().get("data") instanceof Bitmap) {
+                Bitmap bitmap=(Bitmap)data.getExtras().get("data");
+                ByteArrayOutputStream out=new ByteArrayOutputStream();
+                bitmap.compress(Bitmap.CompressFormat.PNG,100,out);
+                String label=photoLabel;
+                learning.execute(()->{
+                    try {
+                        boolean fresh=personal.saveObservation(label,out.toByteArray());
+                        updateBrainAfterLesson(label+" è un oggetto fotografato da me. "+
+                            "Ho osservato questo oggetto chiamato "+label+". "+
+                            "Questo nome è un etichetta fornita dal mio insegnante.",fresh);
+                    } catch(Exception ex){log("Foto non salvata: "+ex.getMessage());}
+                });
+            } else log("Acquisizione foto annullata o miniatura non disponibile.");
+            return;
+        }
         if(request!=CREATE_ZIP || result!=RESULT_OK || data==null ||
                 data.getData()==null)return;
         Uri destination=data.getData();
@@ -454,6 +843,14 @@ public final class MainActivity extends Activity {
                 }
                 File weights=new File(getFilesDir(),"brain.bin");
                 if(weights.isFile())copyToZip(zip,weights,"brain.bin");
+                for(File file:personal.files()) {
+                    String parent=file.getParentFile().getName();
+                    copyToZip(zip,file,"personal/"+parent+"/"+file.getName());
+                }
+                File frapRoot=new File(getFilesDir(),"frag_memory/modules/frap");
+                File[] scripts=frapRoot.listFiles();
+                if(scripts!=null)for(File script:scripts)if(script.isFile())
+                    copyToZip(zip,script,"modules/frap/"+script.getName());
                 log("Memoria esportata (testi, PNG e pesi neurali).");
             } catch(Exception ex) { log("Esportazione fallita: "+ex.getMessage());}
         });
@@ -470,8 +867,11 @@ public final class MainActivity extends Activity {
 
     private void refreshStatus() {
         if(status==null)return;
+        FragDeviceProfile.Snapshot environment=FragDeviceProfile.collect(this);
+        status.setTextColor(environment.charge>=0 && environment.charge<20 ?
+                0xFFF0B07E : 0xFFC0D8D1);
         PrimitiveLM.Model m=model;
-        status.setText("CONCETTI: "+concepts.count()+"   ·   NEURONI: "+m.hidden+
+        status.setText("CONCETTI: "+(concepts.count()+personal.count())+"   ·   NEURONI: "+m.hidden+
                 "   ·   SESSIONI: "+m.trainingSessions+
                 "   ·   PESI: "+PrimitiveLM.parameters(m));
     }
@@ -500,6 +900,7 @@ public final class MainActivity extends Activity {
         destroyed=true;
         handler.removeCallbacksAndMessages(null);
         learning.shutdown();
+        if(speech!=null){speech.stop();speech.shutdown();speech=null;}
         if(browser!=null) {
             browser.stopLoading();
             browser.destroy();
