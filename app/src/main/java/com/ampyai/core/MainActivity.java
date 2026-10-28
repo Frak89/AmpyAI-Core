@@ -28,6 +28,8 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.CheckBox;
+import android.text.InputType;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.speech.tts.TextToSpeech;
@@ -72,6 +74,9 @@ public final class MainActivity extends Activity {
     private String photoLabel="";
     private static final int PHOTO_REQUEST=403;
     private ModelStore modelStore;
+    private static final String PREF_AUTO="growth_auto";
+    private static final String PREF_CAP="growth_ceiling";
+    private static final String PREF_STALLED="growth_stalled";
     private volatile PrimitiveLM.Model model;
     private LinearLayout root;
     private TextView status, activity, webTitle;
@@ -103,8 +108,12 @@ public final class MainActivity extends Activity {
         catch(IOException ex) {
             model=PrimitiveLM.blank();
         }
-        int needed=PrimitiveLM.widthForConcepts(concepts.count()+personal.count());
-        if(model.hidden<needed)model=PrimitiveLM.expanded(model,needed);
+        // Never change an explicitly chosen manual width on startup.
+        if(autoGrowth()) {
+            int needed=FragNeuronGrowth.conceptTarget(model.hidden,
+                    concepts.count()+personal.count(),autoGrowthLimit());
+            if(model.hidden<needed)model=PrimitiveLM.expanded(model,needed);
+        }
 
         root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(0xFF08131B);setContentView(root);
@@ -559,10 +568,9 @@ public final class MainActivity extends Activity {
      * A new lesson triggers actual training from user-authored material.
      */
     private void updateBrainAfterLesson(String corpus,boolean newConcept) throws IOException {
-        int desired=PrimitiveLM.widthForConcepts(concepts.count()+personal.count());
-        PrimitiveLM.Model worker=PrimitiveLM.expanded(model,Math.max(model.hidden,desired));
+        PrimitiveLM.Model worker=modelForLesson(concepts.count()+personal.count());
         if(corpus!=null && PrimitiveLM.normalize(corpus).length()>=80){
-            PrimitiveLM.train(worker,corpus,3,(epoch,total,loss,neurons)->
+            worker=trainWithAutoGrowth(worker,corpus,3,(epoch,total,loss,neurons)->
                 log("Lezione: epoca "+epoch+"/"+total+" · loss "+
                     String.format(Locale.ITALY,"%.3f",loss)+
                     " · neuroni "+neurons));
@@ -980,13 +988,12 @@ public final class MainActivity extends Activity {
                 if(concepts.save(observation[0],url,observation[1],pngBytes))discovered++;
             int actual=concepts.count()+personal.count();
             int previous=model.hidden;
-            int desired=PrimitiveLM.widthForConcepts(actual);
-            PrimitiveLM.Model worker=PrimitiveLM.expanded(model,Math.max(previous,desired));
+            PrimitiveLM.Model worker=modelForLesson(actual);
             if(discovered>0) {
                 int newFound=discovered;
                 log("Nuovi concetti: "+newFound+" · neuroni "+previous+
                         " → "+worker.hidden+"; addestramento dai testi...");
-                PrimitiveLM.train(worker,pageText,3,(e,n,loss,neurons)->{
+                worker=trainWithAutoGrowth(worker,pageText,3,(e,n,loss,neurons)->{
                     log("Epoca "+e+"/"+n+" · loss "+String.format(Locale.ITALY,"%.3f",loss)+
                             " · neuroni "+neurons);
                 });
@@ -1010,6 +1017,54 @@ public final class MainActivity extends Activity {
         }
     }
 
+
+    private boolean autoGrowth() {
+        return getPreferences(MODE_PRIVATE).getBoolean(PREF_AUTO,true);
+    }
+
+    /** Memory-aware ceiling, capped by a number the user enters in Psicofråg. */
+    private int safeMaximumNeurons() {
+        return FragNeuronGrowth.safeMaximum(Runtime.getRuntime().maxMemory());
+    }
+    private int autoGrowthLimit() {
+        int stored=getPreferences(MODE_PRIVATE).getInt(
+                PREF_CAP,FragNeuronGrowth.DEFAULT_AUTO_LIMIT);
+        return Math.max(FragNeuronGrowth.MIN,
+                Math.min(safeMaximumNeurons(),Math.min(PrimitiveLM.MAX_HIDDEN,stored)));
+    }
+
+    private PrimitiveLM.Model modelForLesson(int conceptsCount) {
+        PrimitiveLM.Model current=model;
+        if(!autoGrowth())return current;
+        int desired=FragNeuronGrowth.conceptTarget(current.hidden,conceptsCount,
+                autoGrowthLimit());
+        if(desired>current.hidden){
+            log("Crescita da nuove memorie: "+current.hidden+" → "+desired+" neuroni.");
+            return PrimitiveLM.expanded(current,desired);
+        }
+        return current;
+    }
+
+    /** Learns from an explicit document and grows if two sessions nearly stall. */
+    private PrimitiveLM.Model trainWithAutoGrowth(PrimitiveLM.Model worker,
+            String corpus,int epochs,PrimitiveLM.Listener progress) {
+        float before=autoGrowth() ? PrimitiveLM.evaluateLoss(worker,corpus) : Float.NaN;
+        PrimitiveLM.train(worker,corpus,epochs,progress);
+        if(!autoGrowth())return worker;
+        int previous=getPreferences(MODE_PRIVATE).getInt(PREF_STALLED,0);
+        FragNeuronGrowth.Decision choice=FragNeuronGrowth.afterTraining(
+                worker.hidden,Math.max(worker.hidden,autoGrowthLimit()),
+                previous,before,worker.lastLoss);
+        getPreferences(MODE_PRIVATE).edit().putInt(PREF_STALLED,choice.stalled).apply();
+        if(choice.target>worker.hidden){
+            log("Psicofråg AUTO: "+choice.why+
+                    ". Espansione "+worker.hidden+" → "+choice.target+".");
+            return PrimitiveLM.expanded(worker,choice.target);
+        }
+        log("Psicofråg AUTO: "+choice.why+".");
+        return worker;
+    }
+
     private void showBrain() {
         PrimitiveLM.Model snapshot=model;
         int count=concepts.count()+personal.count();
@@ -1022,12 +1077,15 @@ public final class MainActivity extends Activity {
         TextView intro=label("PSICOFRÅG · CERVELLO REALE\n\n"+
                 "Elementi appresi: "+count+" (Web: "+concepts.count()+
                 ", personali: "+personal.count()+")\n"+
-                "Neuroni nascosti: "+snapshot.hidden+" / "+PrimitiveLM.MAX_HIDDEN+"\n"+
+                "Neuroni nascosti: "+snapshot.hidden+
+                " · limite di sicurezza stimato: "+safeMaximumNeurons()+"\n"+
                 "Parametri trainabili: "+PrimitiveLM.parameters(snapshot)+"\n"+
                 "Sessioni di training: "+snapshot.trainingSessions+"\n"+
                 "Caratteri elaborati: "+snapshot.processedCharacters+"\n"+
                 "Ultima loss: "+String.format(Locale.ITALY,"%.3f",snapshot.lastLoss)+"\n"+
                 "Finestra contestuale: "+PrimitiveLM.CONTEXT+" caratteri\n"+
+                "Crescita: "+(autoGrowth()?"AUTOMATICA":"MANUALE")+
+                " · soglia auto: "+autoGrowthLimit()+"\n"+
                 (snapshot.trainingSessions==0?
                  "\nNon ho ancora imparato nulla. I miei pesi sono casuali.\n":
                  "\nHo appreso distribuzioni di caratteri, non fatti verificati.\n"),
@@ -1036,6 +1094,94 @@ public final class MainActivity extends Activity {
         BrainGraphView graph=new BrainGraphView(this);
         graph.display(snapshot,"fråg",count);
         layout.addView(graph,new LinearLayout.LayoutParams(-1,dp(420)));
+        TextView neuralSetup=label("ESPANSIONE DEL CERVELLO\n"+
+                "Scrivi un numero di neuroni o scegli la crescita automatica. "+
+                "La modalità manuale mantiene esattamente il numero scelto, "+
+                "senza ridurre i pesi già acquisiti.",
+                12,0xFFC5D8D3);
+        layout.addView(neuralSetup);
+        EditText desiredNeurons=new EditText(this);
+        desiredNeurons.setSingleLine(true);
+        desiredNeurons.setInputType(InputType.TYPE_CLASS_NUMBER);
+        desiredNeurons.setText(String.valueOf(autoGrowth() ?
+                autoGrowthLimit():snapshot.hidden));
+        desiredNeurons.setHint("Numero neuroni / limite automatico");
+        desiredNeurons.setTextColor(Color.WHITE);
+        desiredNeurons.setHintTextColor(0xFF879FA7);
+        layout.addView(desiredNeurons);
+        CheckBox autoSwitch=new CheckBox(this);
+        autoSwitch.setText("Crescita automatica: concetti + stallo del training");
+        autoSwitch.setChecked(autoGrowth());
+        autoSwitch.setTextColor(0xFFB9EECC);
+        layout.addView(autoSwitch);
+        TextView growthResult=label("Limite hardware stimato: "+
+                safeMaximumNeurons()+" neuroni. Il valore massimo programmato è "+
+                PrimitiveLM.MAX_HIDDEN+".\n"+
+                "Attenzione: reti grandi richiedono più RAM e riducono "+
+                "automaticamente la quantità di testo usata per il training.",
+                11,0xFFB9CED1);
+        layout.addView(growthResult);
+        Button applyGrowth=button("APPLICA NUMERO / CRESCITA AUTOMATICA");
+        applyGrowth.setOnClickListener(v->{
+            String raw=desiredNeurons.getText().toString().trim();
+            final int requested;
+            try {requested=Integer.parseInt(raw);}
+            catch(NumberFormatException ex){
+                growthResult.setText("Inserisci un numero intero.");return;
+            }
+            final boolean automatic=autoSwitch.isChecked();
+            int safe=safeMaximumNeurons();
+            if(requested<FragNeuronGrowth.MIN || requested>safe) {
+                growthResult.setText("Numero consentito su questo telefono: "+
+                        FragNeuronGrowth.MIN+"–"+safe+".");return;
+            }
+            if(!automatic) {
+                try {FragNeuronGrowth.requireManual(requested,model.hidden,safe);}
+                catch(IllegalArgumentException ex){
+                    growthResult.setText(ex.getMessage());return;
+                }
+            }
+            if(!busy.compareAndSet(false,true)) {
+                growthResult.setText("Un addestramento è già in corso.");return;
+            }
+            applyGrowth.setEnabled(false);
+            growthResult.setText("Configurazione e pesi in salvataggio...");
+            learning.execute(()->{
+                try {
+                    PrimitiveLM.Model newModel=model;
+                    if(!automatic && requested>model.hidden)
+                        newModel=PrimitiveLM.expanded(model,requested);
+                    modelStore.save(newModel);
+                    model=newModel;
+                    getPreferences(MODE_PRIVATE).edit()
+                        .putBoolean(PREF_AUTO,automatic)
+                        .putInt(PREF_CAP,requested)
+                        .putInt(PREF_STALLED,0).apply();
+                    final PrimitiveLM.Model installed=newModel;
+                    runOnUiThread(()->{
+                        if(destroyed)return;
+                        refreshStatus();
+                        graph.display(installed,"fråg",concepts.count()+personal.count());
+                        growthResult.setText("APPLICATO: "+installed.hidden+
+                            " neuroni reali, "+PrimitiveLM.parameters(installed)+
+                            " parametri. "+(automatic?"Crescita automatica attiva (massimo "+
+                            requested+").":"Dimensione manuale fissata."));
+                        log("Psicofråg: "+installed.hidden+" neuroni, modalità "+
+                            (automatic?"AUTO":"MANUALE")+".");
+                    });
+                } catch(Exception ex) {
+                    runOnUiThread(()->{
+                        if(!destroyed)growthResult.setText("Errore espansione: "+ex.getMessage());
+                    });
+                } finally {
+                    busy.set(false);
+                    runOnUiThread(()->{
+                        if(!destroyed)applyGrowth.setEnabled(true);
+                    });
+                }
+            });
+        });
+        layout.addView(applyGrowth);
         EditText prompt=new EditText(this);
         prompt.setHint("Prova generazione: scrivi un inizio...");
         prompt.setTextColor(Color.WHITE);
@@ -1052,11 +1198,13 @@ public final class MainActivity extends Activity {
         });
         layout.addView(generate);
         layout.addView(result);
-        TextView note=label("\nOgni nuovo concetto espande realmente lo strato "+
-                "nascosto (+4 neuroni fino a 256)."+
-                "\n\nIl modello è un piccolo LM a caratteri: non è un LLM "+
-                "grande, non interpreta semanticamente un sito e non sa "+
-                "ancora autoprogrammarsi.",12,0xFFB4C9CD);
+        TextView note=label("\nIn AUTO Fråg espande i neuroni quando acquisisce "+
+                "nuovi concetti e quando due training mostrano scarsi progressi. "+
+                "Il limite può essere modificato da te. "+
+                "In MANUALE mantiene la quantità scelta.\n\n"+
+                "Aumentare neuroni non equivale automaticamente a diventare più intelligente: "+
+                "resta un piccolo modello di caratteri, senza conoscenza semantica verificata.",
+                12,0xFFB4C9CD);
         layout.addView(note);
         Button gallery=button("APRI MEMORIA TXT / PNG");
         layout.addView(gallery);
