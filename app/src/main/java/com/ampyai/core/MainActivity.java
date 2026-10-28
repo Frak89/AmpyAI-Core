@@ -28,6 +28,8 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.speech.tts.TextToSpeech;
 import android.media.AudioTrack;
 import android.media.AudioManager;
@@ -75,6 +77,11 @@ public final class MainActivity extends Activity {
     private TextView status, activity, webTitle;
     private EditText searchInput;
     private WebView browser;
+    private AlertDialog helpDialog;
+    private EditText helpFilter;
+    private TextView helpStats;
+    private LinearLayout helpEntriesView;
+    private final List<FragHelpCatalog.Entry> helpEntries=new ArrayList<>();
     private boolean learnFromNextClick;
     private volatile boolean destroyed;
     private String loadingUrl="";
@@ -129,7 +136,7 @@ public final class MainActivity extends Activity {
         searchInput.setHintTextColor(0xFF8C9DAB);
         searchInput.setSingleLine(true);
         searchInput.setTextSize(14f);
-        searchInput.setHint("Cerca sul Web o scrivi Psicofråg");
+        searchInput.setHint("Cerca, Psicofråg oppure help");
         bar.addView(searchInput,new LinearLayout.LayoutParams(0,dp(53),1));
         Button go=button("CERCA");
         bar.addView(go,new LinearLayout.LayoutParams(dp(90),dp(53)));
@@ -145,15 +152,18 @@ public final class MainActivity extends Activity {
         Button learn=button("Studia pagina");
         Button memory=button("Memoria");
         Button lab=button("Laboratorio");
+        Button help=button("Help");
         actions.addView(psico,new LinearLayout.LayoutParams(0,dp(44),1));
         actions.addView(learn,new LinearLayout.LayoutParams(0,dp(44),1));
         actions.addView(memory,new LinearLayout.LayoutParams(0,dp(44),1));
         actions.addView(lab,new LinearLayout.LayoutParams(0,dp(44),1));
+        actions.addView(help,new LinearLayout.LayoutParams(0,dp(44),1));
         root.addView(actions);
         psico.setOnClickListener(v->showBrain());
         learn.setOnClickListener(v->captureCurrentPage());
         memory.setOnClickListener(v->showMemory());
         lab.setOnClickListener(v->showLaboratory());
+        help.setOnClickListener(v->showHelp());
 
         webTitle=label("Sfoglia Internet. Fråg impara dalle pagine che apri.",11,
                 0xFF96ACB7);
@@ -198,6 +208,266 @@ public final class MainActivity extends Activity {
         root.requestApplyInsets();
     }
 
+
+
+    /** Dynamic user-visible guide. Entries are rebuilt from actual saved memory. */
+    private void showHelp() {
+        if(helpDialog!=null && helpDialog.isShowing()) {
+            refreshHelpIfOpen();
+            return;
+        }
+        LinearLayout content=new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(12),dp(8),dp(12),dp(8));
+        content.setBackgroundColor(0xFFF5F9F8);
+
+        TextView description=label("COMANDI VERI + NUOVE CONOSCENZE\n"+
+                "Il catalogo cresce quando salvi una pagina, una lezione, una parola, "+
+                "una foto o un modulo FRAP. Le conoscenze non sono funzioni eseguibili.",
+                12,0xFF204139);
+        content.addView(description);
+
+        helpFilter=new EditText(this);
+        helpFilter.setSingleLine(true);
+        helpFilter.setTextColor(0xFF16282A);
+        helpFilter.setHintTextColor(0xFF708483);
+        helpFilter.setHint("Cerca comando, parola, associazione, concetto...");
+        content.addView(helpFilter);
+
+        helpStats=label("",12,0xFF27594D);
+        helpStats.setPadding(0,dp(3),0,dp(3));
+        content.addView(helpStats);
+
+        ScrollView scroll=new ScrollView(this);
+        helpEntriesView=new LinearLayout(this);
+        helpEntriesView.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(helpEntriesView);
+        content.addView(scroll,new LinearLayout.LayoutParams(-1,0,1f));
+        helpDialog=new AlertDialog.Builder(this).setTitle("🐸 Fråg · Help vivo")
+                .setView(content).setPositiveButton("Chiudi",null).create();
+        helpFilter.addTextChangedListener(new TextWatcher(){
+            @Override public void beforeTextChanged(CharSequence s,int st,int count,int after){}
+            @Override public void onTextChanged(CharSequence s,int start,int before,int count){
+                renderHelp(s.toString());
+            }
+            @Override public void afterTextChanged(Editable value){}
+        });
+        helpDialog.setOnDismissListener(d->{
+            helpDialog=null;helpFilter=null;helpStats=null;helpEntriesView=null;
+        });
+        helpDialog.show();
+        if(helpDialog.getWindow()!=null)
+            helpDialog.getWindow().setLayout(-1,(int)(getResources().
+                    getDisplayMetrics().heightPixels*.84f));
+        refreshHelpIfOpen();
+    }
+
+    private void refreshHelpIfOpen() {
+        if(helpDialog==null||!helpDialog.isShowing()||helpEntriesView==null)return;
+        helpEntries.clear();
+        helpEntries.addAll(FragHelpCatalog.basics());
+        for(ConceptStore.Concept learned:concepts.list()) {
+            if(helpEntries.size()>=300)break;
+            String content;
+            try {content=new String(Files.readAllBytes(learned.text.toPath()),
+                    StandardCharsets.UTF_8);}
+            catch(IOException ignored) {content="Pagina salvata da "+learned.url;}
+            helpEntries.add(FragHelpCatalog.visited(learned.id,learned.title,
+                    learned.url,content,learned.png));
+        }
+        for(File file:personal.files()) {
+            if(helpEntries.size()>=300)break;
+            if(!file.isFile()||!file.getName().endsWith(".txt"))continue;
+            String folder=file.getParentFile().getName();
+            String kind=folder.equals("lessons")?"lezione":
+                    folder.equals("lexicon")?"parola":
+                    folder.equals("observations")?"foto":
+                    folder.equals("poems")?"poesia":null;
+            if(kind==null)continue;
+            String name=file.getName().substring(0,file.getName().length()-4);
+            try {
+                String contents=new String(Files.readAllBytes(file.toPath()),
+                        StandardCharsets.UTF_8);
+                File image=new File(file.getParentFile(),name+".png");
+                helpEntries.add(FragHelpCatalog.personal(kind,name,contents,image));
+            }catch(IOException ignored) {}
+        }
+        File folder=new File(getFilesDir(),"frag_memory/modules/frap");
+        File[] scripts=folder.listFiles((dir,n)->n.endsWith(".frap"));
+        if(scripts!=null){
+            java.util.Arrays.sort(scripts,(a,b)->Long.compare(b.lastModified(),a.lastModified()));
+            for(File script:scripts){
+                if(helpEntries.size()>=300)break;
+                String name=script.getName().substring(0,script.getName().length()-5);
+                try{
+                    String code=new String(Files.readAllBytes(script.toPath()),
+                            StandardCharsets.UTF_8);
+                    FrapEngine.parse(code); // indexed as runnable ONLY if valid.
+                    helpEntries.add(FragHelpCatalog.frap(name,code,null));
+                }catch(Exception ignored) {}
+            }
+        }
+        String current=helpFilter==null?"":helpFilter.getText().toString();
+        renderHelp(current);
+    }
+
+    private void renderHelp(String query) {
+        if(helpEntriesView==null||helpStats==null)return;
+        helpEntriesView.removeAllViews();
+        int capabilities=0,modules=0,memories=0,shown=0;
+        for(FragHelpCatalog.Entry item:helpEntries){
+            if(item.group.equals(FragHelpCatalog.CAPABILITY))capabilities++;
+            else if(item.group.equals(FragHelpCatalog.MODULE))modules++;
+            else memories++;
+            if(!item.matches(query))continue;
+            shown++;
+            if(shown>125)continue; // bounded UI, filter for the rest.
+            LinearLayout entry=new LinearLayout(this);
+            entry.setOrientation(LinearLayout.VERTICAL);
+            entry.setPadding(dp(8),dp(5),dp(8),dp(6));
+            TextView title=label(item.title+"   "+(item.executable?"▶":"📖"),14,
+                    item.executable?0xFF164B3E:0xFF334D5A);
+            title.setTypeface(null,Typeface.BOLD);
+            entry.addView(title);
+            TextView desc=label(item.description+"\nEsempio: "+item.example,11,
+                    0xFF3B565A);
+            entry.addView(desc);
+            if(item.imagePath!=null){
+                File asset=new File(item.imagePath);
+                if(asset.isFile()){
+                    android.graphics.BitmapFactory.Options opts=
+                            new android.graphics.BitmapFactory.Options();
+                    opts.inJustDecodeBounds=true;
+                    BitmapFactory.decodeFile(item.imagePath,opts);
+                    opts.inJustDecodeBounds=false;
+                    opts.inSampleSize=Math.max(1,Math.max(opts.outWidth/240,opts.outHeight/160));
+                    Bitmap thumb=BitmapFactory.decodeFile(item.imagePath,opts);
+                    if(thumb!=null){
+                        ImageView thumbnail=new ImageView(this);
+                        thumbnail.setImageBitmap(thumb);
+                        thumbnail.setAdjustViewBounds(true);
+                        thumbnail.setScaleType(ImageView.ScaleType.FIT_START);
+                        entry.addView(thumbnail,new LinearLayout.LayoutParams(-1,dp(85)));
+                    }
+                }
+            }
+            Button open=button("DETTAGLI · ESEMPIO");
+            open.setOnClickListener(v->showHelpDetails(item));
+            entry.addView(open,new LinearLayout.LayoutParams(-1,dp(37)));
+            helpEntriesView.addView(entry);
+            View divider=new View(this);
+            divider.setBackgroundColor(0xFFD7E3DF);
+            helpEntriesView.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
+        }
+        helpStats.setText("Comandi: "+capabilities+" · Moduli FRAP: "+modules+
+                " · Memorie: "+memories+"\nRisultati: "+shown+
+                (shown>125?" (mostrati i primi 125; affina la ricerca)":""));
+        if(shown==0){
+            helpEntriesView.addView(label("Non ci sono ancora concetti corrispondenti. "+
+                    "Apri un sito o insegnami qualcosa nel Laboratorio.",13,0xFF435E5C));
+        }
+    }
+
+    private void showHelpDetails(FragHelpCatalog.Entry entry) {
+        ScrollView scroll=new ScrollView(this);
+        LinearLayout content=new LinearLayout(this);
+        content.setPadding(dp(14),dp(10),dp(14),dp(12));
+        content.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(content);
+        TextView intro=label(entry.description+"\n\n"+
+                (entry.executable?"COMANDO / MODULO ESEGUIBILE":
+                        "MEMORIA CONSULTABILE (NON È UN NUOVO COMANDO)")+
+                "\n\nEsempio da eseguire:\n"+entry.example+"\n\n"+
+                entry.detail,13,0xFF12282A);
+        intro.setTextIsSelectable(true);
+        content.addView(intro);
+        if(entry.imagePath!=null && new File(entry.imagePath).isFile()){
+            BitmapFactory.Options o=new BitmapFactory.Options();
+            o.inSampleSize=2;
+            Bitmap image=BitmapFactory.decodeFile(entry.imagePath,o);
+            if(image!=null){
+                ImageView pic=new ImageView(this);
+                pic.setImageBitmap(image);
+                pic.setAdjustViewBounds(true);
+                content.addView(pic,new LinearLayout.LayoutParams(-1,dp(230)));
+            }
+        }
+        new AlertDialog.Builder(this).setTitle(entry.title).setView(scroll)
+                .setNegativeButton("Chiudi",null)
+                .setPositiveButton("Usa esempio",(d,w)->{
+                    searchInput.setText(entry.example);
+                    go(entry.example);
+                }).show();
+    }
+
+    /** These are actual supported text commands; anything else remains a web search. */
+    private boolean handleHelpCommand(String query) {
+        String q=query.toLowerCase(Locale.ITALIAN).trim();
+        switch(q){
+            case "studia pagina":captureCurrentPage();return true;
+            case "memoria":showMemory();return true;
+            case "laboratorio":showLaboratory();return true;
+            case "insegna":showTeacher();return true;
+            case "lingua":showLanguage();return true;
+            case "parliamo":showTalk();return true;
+            case "poesia":showPoem();return true;
+            case "pixel":case "telefono":showDevice();return true;
+            case "frap":showFrap(null);return true;
+            case "autoritratto":showSelfPortrait();return true;
+            case "3d":show3D();return true;
+            case "musica":showMusic();return true;
+            case "fotocamera":showCameraLesson();return true;
+            default:break;
+        }
+        java.util.regex.Matcher web=java.util.regex.Pattern.compile(
+            "^memoria:\\s*([a-f0-9]{24})$").matcher(q);
+        if(web.matches()){
+            for(ConceptStore.Concept c:concepts.list())
+                if(c.id.equals(web.group(1))) {
+                    showConcept(c);return true;
+                }
+            log("Concetto Web non trovato.");return true;
+        }
+        java.util.regex.Matcher user=java.util.regex.Pattern.compile(
+            "^ricorda:\\s*(lezione|parola|foto|poesia)/([a-z0-9_-]{1,80})$").matcher(q);
+        if(user.matches()){
+            showPersonalEntry(user.group(1),user.group(2));return true;
+        }
+        java.util.regex.Matcher script=java.util.regex.Pattern.compile(
+            "^frap:\\s*([a-z0-9_-]{1,32})$").matcher(q);
+        if(script.matches()){
+            String name=script.group(1);
+            File file=new File(getFilesDir(),"frag_memory/modules/frap/"+name+".frap");
+            if(!file.isFile())log("Modulo FRAP non trovato: "+name);
+            else {
+                try {
+                    String source=new String(Files.readAllBytes(file.toPath()),
+                            StandardCharsets.UTF_8);
+                    FrapEngine.parse(source);
+                    showFrap(source);
+                } catch(Exception ex){log("FRAP invalido: "+ex.getMessage());}
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private void showPersonalEntry(String kind,String name){
+        String folder=kind.equals("lezione")?"lessons":
+                kind.equals("parola")?"lexicon":
+                kind.equals("foto")?"observations":"poems";
+        File dir=new File(getFilesDir(),"frag_memory/personal/"+folder);
+        File text=new File(dir,name+".txt");
+        if(!text.isFile()) {
+            log("La memoria richiesta non esiste: "+kind+"/"+name);return;
+        }
+        try {
+            String source=new String(Files.readAllBytes(text.toPath()),StandardCharsets.UTF_8);
+            FragHelpCatalog.Entry entry=FragHelpCatalog.personal(kind,name,source,
+                    new File(dir,name+".png"));
+            showHelpDetails(entry);
+        }catch(IOException ex){log("Memoria non leggibile: "+ex.getMessage());}
+    }
 
     /** In-app laboratory only; it does not redefine arbitrary web search prompts. */
     private void showLaboratory() {
@@ -280,6 +550,7 @@ public final class MainActivity extends Activity {
         runOnUiThread(()->{
             if(destroyed)return;
             refreshStatus();
+            refreshHelpIfOpen();
             log((newConcept?"Nuovo concetto salvato. ":"Concetto aggiornato. ")+
                 "Neuroni nascosti: "+worker.hidden+
                 ". I versi generati sono bozze, non poesia consapevole.");
@@ -395,7 +666,7 @@ public final class MainActivity extends Activity {
             String generated=rawPoem(model,seed.getText().toString());
             result.setText(generated);
             learning.execute(()->{
-                try {personal.savePoem(generated);}
+                try {personal.savePoem(generated);runOnUiThread(()->refreshHelpIfOpen());}
                 catch(IOException ex){log("Impossibile salvare la bozza.");}
             });
         });
@@ -461,6 +732,7 @@ public final class MainActivity extends Activity {
                         source.getBytes(StandardCharsets.UTF_8));
                     Files.write(new File(dir,tag+".svg").toPath(),
                         program.toSvg().getBytes(StandardCharsets.UTF_8));
+                    refreshHelpIfOpen();
                     log("Modulo FRAP salvato: "+tag+".frap e "+tag+".svg. "+
                         "Nessun codice Java viene eseguito.");
                 }catch(Exception ex){log("FRAP rifiutato: "+ex.getMessage());}
@@ -556,6 +828,11 @@ public final class MainActivity extends Activity {
         if(query.equalsIgnoreCase("psicofråg")||query.equalsIgnoreCase("psicofrag")) {
             showBrain();return;
         }
+        if(query.equalsIgnoreCase("help") || query.equalsIgnoreCase("aiuto")
+                || query.equalsIgnoreCase("guida")) {
+            showHelp();return;
+        }
+        if(handleHelpCommand(query))return;
         learnFromNextClick=false;
         if(query.startsWith("https://")) {
             learnFromNextClick=true; // User explicitly opened a page to read.
@@ -684,6 +961,7 @@ public final class MainActivity extends Activity {
             runOnUiThread(()-> {
                 if(destroyed)return;
                 refreshStatus();
+                refreshHelpIfOpen();
                 log("Pagina studiata. Nuovi concetti: "+newCount+
                         ". Ogni cartella contiene concept.txt e page.png.");
             });
@@ -902,6 +1180,7 @@ public final class MainActivity extends Activity {
         destroyed=true;
         handler.removeCallbacksAndMessages(null);
         learning.shutdown();
+        if(helpDialog!=null){helpDialog.dismiss();helpDialog=null;}
         if(speech!=null){speech.stop();speech.shutdown();speech=null;}
         if(browser!=null) {
             browser.stopLoading();
