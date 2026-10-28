@@ -71,15 +71,17 @@ public final class BrainGraphView extends View {
             label(c,chr+" "+String.format(Locale.US,"%.0f%%",state.probs[id]*100),
                     right+dp(7),y+dp(4),0xFFC0F3D9,10);
         }
-        label(c,"Tutti i neuroni (un punto = un neurone):",
-                dp(12),dp(305),0xFFC3D9D5,10);
         int cols=Math.max(1,(int)((getWidth()-dp(24))/dp(9)));
-        for(int i=0;i<model.hidden;i++){
+        int visible=Math.min(model.hidden,cols*3);
+        label(c,"Neuroni reali: "+model.hidden+" · mostrati "+visible,
+                dp(12),dp(300),0xFFC3D9D5,10);
+        // A literal dot per displayed neuron; very large networks remain bounded.
+        for(int i=0;i<visible;i++){
             int col=i%cols,row=i/cols;
-            circle(c,dp(16+col*9),dp(319+row*9),
+            circle(c,dp(16+col*9),dp(314+row*9),
                     0xFF7C9ED2,2.5f);
         }
-        label(c,"Le connessioni rappresentano un campione dei pesi reali.",
+        label(c,"Collegamenti e attivazioni: campione dei pesi reali.",
                 dp(12),dp(359),0xFF96AEB0,9);
     }
     private void line(Canvas c,float x,float y,float xx,float yy,float weight){

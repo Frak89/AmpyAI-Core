@@ -37,3 +37,56 @@ gradle :app:testDebugUnitTest :app:assembleDebug
 ```
 
 APK from GitHub Actions → `Frag-Primordial-debug-APK`. CI unit tests cover initial blank model, real neuron growth preserving original weights, training changes, generation and probabilities.
+
+## Experimental Labs — expanded Fråg (separate feature branch)
+
+The **FRAP** modular laboratory adds capabilities while keeping the original zero-knowledge language core, and training only from user-approved web pages and user-authored lessons.
+
+### What is actually implemented (experimental)
+- **Teach me:** user writes a named 80–4000 character lesson; it persists in `frag_memory/personal/lessons/*.txt` and a separate `*.png` index card (text rendered as a visual memory card, **not** an AI-generated image); up to 4 new hidden neurons per new lesson, and 3 training epochs on its text. Training is character prediction, not semantic understanding.
+- **Custom language:** user saves coined words with **meaning** and an explicit **user-authored pronunciation guide**. Text records and corresponding visual index cards live at `frag_memory/personal/lexicon/*.txt` + `*.png`. The Android offline/system TTS pronounces the guide approximately, **not** accurate arbitrary phonetic realization or real conlang understanding.
+- **Conversation and poems:** a direct continuation from the real tiny neural model; 4-line poem sketches can be saved to `frag_memory/personal/poems`, including a draft after new user lessons. Results are likely nonsense and are explicitly labeled generated text. Fråg has no simulated emotions, sentience, or intrinsic friendship.
+- **Device awareness:** reads Android model/manufacturer/API, battery, locale, screen metrics on user request. It can recognize a Pixel 7 Pro from Android metadata; status color signals low battery. Does not read contacts, files of other apps, SMS, or location.
+- **FRAP 2D/SVG:** safe, bounded beginner vector DSL: `line x1 y1 x2 y2`, `rect x y width height`, `circle cx cy radius`. Each numeric coordinate is in 0..1. Live Canvas preview, and exports `*.frap` + `*.svg` in `frag_memory/modules/frap`, included in ZIP. No arbitrary code execution.
+- **3D:** interactive rotating wireframe cube, a primitive renderer, not 3D model generation or learned modelling.
+- **Self portrait:** editable, programmatic frog face in FRAP, with decorative marks growing as concepts accumulate. This is an **explicit template**, not a genuinely learned visual model.
+- **Music lab:** simple PCM instrument-like approximations for **bass, guitar, drums, piano, tenor sax and alto sax**, seeded by notes the user supplies (e.g. `C3 E3 G3`); seeded variations and sound playback. Does not compose independently from understanding or produce sampled instrument soundfonts.
+- **Camera:** launches the phone camera through an Android capture intent, records a labeled thumbnail PNG and a text file when user identifies it. This is **supervised collection**, NOT an object-recognition model or visual learning.
+- **Export:** memory ZIP includes personal lessons/words/poem drafts/photos and saved FRAP/SVG modules, alongside existing web TXT/PNG and neural weights.
+
+### Why the module structure matters
+Each domain has an isolated Java class and persistent data format. User lessons and browser learning can expand the same primitive neural hidden layer, preserving existing connections. This is measurable model growth, but does **not** cause the model to discover programming, independent reasoning, language understanding, or vision recognition. Future upgrades need independent models / tests for phonetics, image labels, music representation and safe FRAP compilation.
+
+**Status:** feature branch `feature/frag-labs-multimodal`, not merged into `main`. The current `main` remains the verified-from-scratch WebView + Psicofråg prototype.
+
+## Help vivo — catalogo che si popola con l'apprendimento
+
+La schermata principale ha ora un pulsante **Help** e accetta il comando testuale `help` (alias `aiuto` e `guida`). Non ci sono schede fittizie di competenze non realizzate.
+
+All'inizio elenca gli strumenti presenti: `Psicofråg`, ricerca Internet, `studia pagina`, `memoria`, `laboratorio`, `insegna`, `lingua`, `parliamo`, `poesia`, `pixel`, `frap`, `autoritratto`, `3d`, `musica`, `fotocamera`. Ogni voce è selezionabile e presenta descrizione, esempio e possibili limiti.
+
+**Il catalogo viene ricostruito dal disco** ogni volta che lo apri, e rinfrescato se è già visibile al termine dell'apprendimento. Si popola automaticamente con tre gruppi **chiaramente separati**:
+
+1. **Comandi disponibili**: le azioni effettivamente implementate nell'app.
+2. **Moduli FRAP salvati**: ogni file FRAP validato produce una voce **eseguibile** `frap: nome`, mostra il codice sorgente, il suo `*.svg` e anche un vero `*.png` di anteprima del disegno salvato.
+3. **Concetti e memorie acquisiti**: pagine Internet, lezioni, nuove parole, foto etichettate e bozze di poesie sono recuperabili con `memoria: <id>` oppure `ricorda: tipo/nome` e possono mostrare un PNG dal materiale reale. Sono **memorie**: imparare una parola non equivale a creare una nuova funzione Android.
+
+Per esempio: cerca `quadrato geometria`, apri un sito, poi `help` e cerca `quadrato`. Visualizzi titolo, URL, associazioni lessicali, PNG e un comando di recupero del concetto. Oppure apri **Laboratorio → FRAP**, salva un modulo `figura1` e cerca `figura1` in Help: appariranno un comando `frap: figura1` e un'anteprima del disegno.
+
+La guida utilizza i file **realmente salvati** `*.txt`, `*.png`, `*.frap` e non inventa nuove capacità di IA; nessuna istruzione di una pagina Web diventa codice Android arbitrario. La ricerca della guida funziona offline. Per scalabilità mostra massimo 125 voci per filtro, indicando il totale.
+
+
+## Psicofråg — neuroni configurabili, manuali o automatici
+
+Nella finestra **Psicofråg**, oppure digitando `neuroni`, puoi scegliere un **numero intero esatto** di neuroni nascosti. La rete NON è più bloccata a 256 neuroni; il nuovo limite teorico implementato è **16.384**, ridotto automaticamente quando la memoria Java del telefono richiede un margine di sicurezza. Per esempio, inserisci `777` e disattiva **Crescita automatica**, poi premi **APPLICA**. La rete passa esattamente a 777 neuroni senza cancellare i pesi dei neuroni precedenti; il modello aggiornato viene salvato in `brain.bin`. Non è consentito diminuirne il numero da questa UI, per non perdere gli apprendimenti precedenti.
+
+Se attivi la modalità **Crescita automatica**, il numero immesso rappresenta il **tetto massimo desiderato**, non la dimensione immediata. Esempio: `4096` + AUTO:
+- la rete aumenta di **4 neuroni per nuovo concetto** (fino al tetto);
+- misura la loss sui testi **prima e dopo** l'addestramento;
+- se per **due sessioni consecutive** la loss resta elevata e migliora meno del 2,5%, aggiunge un gruppo di nuovi neuroni (almeno 16, aumentando con la dimensione della rete), fino al tetto;
+- se la rete sta migliorando, non cresce per il criterio di stallo;
+- il limite viene ulteriormente limitato dalla stima di RAM e non scende automaticamente sotto il numero di neuroni già presente.
+
+Le impostazioni sono persistenti, e il modello di pesi mantiene lo stesso formato binario già in uso, ora senza l'obbligo di multipli di quattro. Il training di reti grandi è **automaticamente ridotto** nel numero di caratteri ed epoche per limitare l'uso della CPU Android: numeri molto grandi possono comunque rallentare il telefono. Non è una rete che si riprogetta da sola, ma un algoritmo di crescita configurato e controllabile dall'utente. L'aumento dei neuroni non equivale automaticamente a maggiore comprensione, perché il contesto linguistico resta di sei caratteri.
+
+Per osservare la crescita, riapri Psicofråg e confronta il **conteggio reale dei neuroni**, il **numero di parametri**, la **loss**, e le sessioni di apprendimento. La visualizzazione è campionata per evitare migliaia di punti oltre la finestra.

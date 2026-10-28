@@ -24,7 +24,7 @@ public final class ModelStore {
                 context=in.readInt(),vocab=in.readInt();
             if(magic!=MAGIC||format!=FORMAT||context!=PrimitiveLM.CONTEXT||
                 vocab!=PrimitiveLM.VOCAB||hidden<PrimitiveLM.START_HIDDEN||
-                hidden>PrimitiveLM.MAX_HIDDEN||hidden%4!=0)
+                hidden>PrimitiveLM.MAX_HIDDEN)
                 throw new IOException("Modello neurale incompatibile.");
             PrimitiveLM.Model m=PrimitiveLM.expanded(PrimitiveLM.blank(),hidden);
             m.processedCharacters=in.readLong();
@@ -49,8 +49,13 @@ public final class ModelStore {
             for(float[] row:m.output)for(float v:row)out.writeFloat(v);
             for(float v:m.ob)out.writeFloat(v);
         }
-        if(weights.exists()&&!weights.delete())
-            throw new IOException("Non posso sostituire i pesi.");
-        if(!temp.renameTo(weights))throw new IOException("Impossibile salvare i pesi.");
+        try {
+            java.nio.file.Files.move(temp.toPath(),weights.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch(java.nio.file.AtomicMoveNotSupportedException notAtomic) {
+            java.nio.file.Files.move(temp.toPath(),weights.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 }

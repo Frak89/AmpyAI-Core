@@ -12,7 +12,7 @@ public final class PrimitiveLM {
     public static final int CONTEXT = 6;
     public static final int START_HIDDEN = 16;
     public static final int GROWTH_PER_CONCEPT = 4;
-    public static final int MAX_HIDDEN = 256;
+    public static final int MAX_HIDDEN = 16384;
     public static final String ALPHABET =
             "\n abcdefghijklmnopqrstuvwxyz0123456789.,:;!?'-()";
     public static final int VOCAB = ALPHABET.length();
@@ -47,7 +47,7 @@ public final class PrimitiveLM {
         return m.hidden*CONTEXT*VOCAB+m.hidden+VOCAB*m.hidden+VOCAB;
     }
     public static Model expanded(Model old,int target) {
-        if(target<old.hidden || target>MAX_HIDDEN || target%4!=0)
+        if(target<old.hidden || target>MAX_HIDDEN || target<START_HIDDEN)
             throw new IllegalArgumentException("Dimensioni neurali non valide.");
         if(target==old.hidden)return old;
         Model n=new Model(target, 1800L+target);
@@ -66,8 +66,25 @@ public final class PrimitiveLM {
     }
 
     public static int widthForConcepts(int concepts) {
-        return Math.min(MAX_HIDDEN, START_HIDDEN+
-                Math.max(0,concepts)*GROWTH_PER_CONCEPT);
+        return (int)Math.min((long)MAX_HIDDEN,
+                (long)START_HIDDEN+Math.max(0L,(long)concepts)*GROWTH_PER_CONCEPT);
+    }
+    /**
+     * Large networks must learn from smaller bounded batches to avoid holding
+     * the Android main process hostage. This affects training speed and quality.
+     */
+    public static int trainingCharacters(int hidden){
+        return Math.min(1600,Math.max(80,(int)(1600L*256/hidden)));
+    }
+    public static int trainingEpochs(int hidden,int requested){
+        return Math.min(requested,Math.max(1,768/hidden));
+    }
+    public static long parameterCount(int hidden){
+        return ((long)hidden)*(CONTEXT*VOCAB+VOCAB+1)+VOCAB;
+    }
+    public static long estimatedBytes(int hidden) {
+        // Weights twice during expansion + gradients, JNI/WebView headroom excluded.
+        return 2L*parameterCount(hidden)*Float.BYTES+hidden*64L;
     }
     public static String normalize(String value) {
         if(value==null)return "";
@@ -117,6 +134,21 @@ public final class PrimitiveLM {
         for(int v=0;v<VOCAB;v++)p[v]/=(float)sum;
         return p;
     }
+    /** Mean prediction loss before an incremental lesson, same input as the trainer. */
+    public static float evaluateLoss(Model m,String raw) {
+        String sample=normalize(raw);
+        int len=Math.min(sample.length(),trainingCharacters(m.hidden));
+        if(len<80)return Float.NaN;
+        float[] hidden=new float[m.hidden],logits=new float[VOCAB];
+        double total=0;
+        for(int pos=0;pos<len;pos++) {
+            forward(m,context(sample,pos),hidden,logits);
+            float[] probabilities=softmax(logits,1f);
+            total-=Math.log(Math.max(1e-8f,probabilities[id(sample.charAt(pos))]));
+        }
+        return (float)(total/len);
+    }
+
     public interface Listener {
         void onEpoch(int epoch, int epochs, float loss, int neurons);
     }
@@ -125,11 +157,12 @@ public final class PrimitiveLM {
         String sample=normalize(raw);
         if(sample.length()<80)throw new IllegalArgumentException("Pagina troppo breve.");
         if(epochs<1||epochs>10)throw new IllegalArgumentException("Epoche fuori limite.");
-        int len=Math.min(sample.length(),1600);
+        int len=Math.min(sample.length(),trainingCharacters(m.hidden));
+        int actualEpochs=trainingEpochs(m.hidden,epochs);
         sample=sample.substring(0,len);
         float[] activations=new float[m.hidden],logits=new float[VOCAB];
         float[] grad=new float[VOCAB], hiddenGradient=new float[m.hidden];
-        for(int ep=0;ep<epochs;ep++){
+        for(int ep=0;ep<actualEpochs;ep++){
             double totalLoss=0;
             final float learningRate=0.015f/(1f+ep*.22f);
             for(int pos=0;pos<len;pos++){
@@ -157,10 +190,10 @@ public final class PrimitiveLM {
                 }
             }
             m.lastLoss=(float)(totalLoss/len);
-            if(listener!=null)listener.onEpoch(ep+1,epochs,m.lastLoss,m.hidden);
+            if(listener!=null)listener.onEpoch(ep+1,actualEpochs,m.lastLoss,m.hidden);
         }
         m.trainingSessions++;
-        m.processedCharacters+=(long)len*epochs;
+        m.processedCharacters+=(long)len*actualEpochs;
     }
     public static final class Probe {
         public final int[] ids;
