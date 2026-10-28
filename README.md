@@ -74,3 +74,19 @@ All'inizio elenca gli strumenti presenti: `Psicofråg`, ricerca Internet, `studi
 Per esempio: cerca `quadrato geometria`, apri un sito, poi `help` e cerca `quadrato`. Visualizzi titolo, URL, associazioni lessicali, PNG e un comando di recupero del concetto. Oppure apri **Laboratorio → FRAP**, salva un modulo `figura1` e cerca `figura1` in Help: appariranno un comando `frap: figura1` e un'anteprima del disegno.
 
 La guida utilizza i file **realmente salvati** `*.txt`, `*.png`, `*.frap` e non inventa nuove capacità di IA; nessuna istruzione di una pagina Web diventa codice Android arbitrario. La ricerca della guida funziona offline. Per scalabilità mostra massimo 125 voci per filtro, indicando il totale.
+
+
+## Psicofråg — neuroni configurabili, manuali o automatici
+
+Nella finestra **Psicofråg**, oppure digitando `neuroni`, puoi scegliere un **numero intero esatto** di neuroni nascosti. La rete NON è più bloccata a 256 neuroni; il nuovo limite teorico implementato è **16.384**, ridotto automaticamente quando la memoria Java del telefono richiede un margine di sicurezza. Per esempio, inserisci `777` e disattiva **Crescita automatica**, poi premi **APPLICA**. La rete passa esattamente a 777 neuroni senza cancellare i pesi dei neuroni precedenti; il modello aggiornato viene salvato in `brain.bin`. Non è consentito diminuirne il numero da questa UI, per non perdere gli apprendimenti precedenti.
+
+Se attivi la modalità **Crescita automatica**, il numero immesso rappresenta il **tetto massimo desiderato**, non la dimensione immediata. Esempio: `4096` + AUTO:
+- la rete aumenta di **4 neuroni per nuovo concetto** (fino al tetto);
+- misura la loss sui testi **prima e dopo** l'addestramento;
+- se per **due sessioni consecutive** la loss resta elevata e migliora meno del 2,5%, aggiunge un gruppo di nuovi neuroni (almeno 16, aumentando con la dimensione della rete), fino al tetto;
+- se la rete sta migliorando, non cresce per il criterio di stallo;
+- il limite viene ulteriormente limitato dalla stima di RAM e non scende automaticamente sotto il numero di neuroni già presente.
+
+Le impostazioni sono persistenti, e il modello di pesi mantiene lo stesso formato binario già in uso, ora senza l'obbligo di multipli di quattro. Il training di reti grandi è **automaticamente ridotto** nel numero di caratteri ed epoche per limitare l'uso della CPU Android: numeri molto grandi possono comunque rallentare il telefono. Non è una rete che si riprogetta da sola, ma un algoritmo di crescita configurato e controllabile dall'utente. L'aumento dei neuroni non equivale automaticamente a maggiore comprensione, perché il contesto linguistico resta di sei caratteri.
+
+Per osservare la crescita, riapri Psicofråg e confronta il **conteggio reale dei neuroni**, il **numero di parametri**, la **loss**, e le sessioni di apprendimento. La visualizzazione è campionata per evitare migliaia di punti oltre la finestra.
