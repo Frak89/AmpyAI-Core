@@ -148,16 +148,21 @@ public final class MainActivity extends Activity {
 
         LinearLayout actions=new LinearLayout(this);
         actions.setPadding(dp(9),0,dp(9),dp(5));
+        actions.setOrientation(LinearLayout.VERTICAL);
         Button psico=button("Psicofråg");
         Button learn=button("Studia pagina");
         Button memory=button("Memoria");
         Button lab=button("Laboratorio");
         Button help=button("Help");
-        actions.addView(psico,new LinearLayout.LayoutParams(0,dp(44),1));
-        actions.addView(learn,new LinearLayout.LayoutParams(0,dp(44),1));
-        actions.addView(memory,new LinearLayout.LayoutParams(0,dp(44),1));
-        actions.addView(lab,new LinearLayout.LayoutParams(0,dp(44),1));
-        actions.addView(help,new LinearLayout.LayoutParams(0,dp(44),1));
+        LinearLayout firstRow=new LinearLayout(this);
+        firstRow.addView(psico,new LinearLayout.LayoutParams(0,dp(43),1));
+        firstRow.addView(help,new LinearLayout.LayoutParams(0,dp(43),1));
+        LinearLayout secondRow=new LinearLayout(this);
+        secondRow.addView(learn,new LinearLayout.LayoutParams(0,dp(43),1));
+        secondRow.addView(memory,new LinearLayout.LayoutParams(0,dp(43),1));
+        secondRow.addView(lab,new LinearLayout.LayoutParams(0,dp(43),1));
+        actions.addView(firstRow);
+        actions.addView(secondRow);
         root.addView(actions);
         psico.setOnClickListener(v->showBrain());
         learn.setOnClickListener(v->captureCurrentPage());
@@ -242,7 +247,8 @@ public final class MainActivity extends Activity {
         helpEntriesView=new LinearLayout(this);
         helpEntriesView.setOrientation(LinearLayout.VERTICAL);
         scroll.addView(helpEntriesView);
-        content.addView(scroll,new LinearLayout.LayoutParams(-1,0,1f));
+        content.addView(scroll,new LinearLayout.LayoutParams(-1,
+                Math.min(dp(500),(int)(getResources().getDisplayMetrics().heightPixels*.56f))));
         helpDialog=new AlertDialog.Builder(this).setTitle("🐸 Fråg · Help vivo")
                 .setView(content).setPositiveButton("Chiudi",null).create();
         helpFilter.addTextChangedListener(new TextWatcher(){
