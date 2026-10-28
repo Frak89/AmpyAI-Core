@@ -105,7 +105,7 @@ public final class FragHelpCatalog {
             "Modulo vettoriale salvato, apribile nell'editor.",
             "frap: "+name, "Codice FRAP:\n"+trim(source,1500)+
                 "\n\nLa sintassi viene verificata prima dell'esecuzione.",
-                null,true,true);
+                svg!=null && svg.isFile()?svg.getAbsolutePath():null,true,true);
     }
 
     public static String trim(String raw,int max) {
