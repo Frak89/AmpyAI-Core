@@ -8,7 +8,7 @@ public final class FragMusicLabTest {
     @Test public void allInstrumentsSynthesizeSamples() {
         for(String name:FragMusicLab.INSTRUMENTS) {
             short[] output=FragMusicLab.synthesize(name,"C3 E3 G3");
-            assertEquals(3*FragMusicLab.RATE/4,output.length);
+            assertEquals(3*(FragMusicLab.RATE/4),output.length);
         }
     }
     @Test public void variationsUseSeedNotes() {
