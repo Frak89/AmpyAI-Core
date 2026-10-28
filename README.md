@@ -58,3 +58,19 @@ The **FRAP** modular laboratory adds capabilities while keeping the original zer
 Each domain has an isolated Java class and persistent data format. User lessons and browser learning can expand the same primitive neural hidden layer, preserving existing connections. This is measurable model growth, but does **not** cause the model to discover programming, independent reasoning, language understanding, or vision recognition. Future upgrades need independent models / tests for phonetics, image labels, music representation and safe FRAP compilation.
 
 **Status:** feature branch `feature/frag-labs-multimodal`, not merged into `main`. The current `main` remains the verified-from-scratch WebView + Psicofråg prototype.
+
+## Help vivo — catalogo che si popola con l'apprendimento
+
+La schermata principale ha ora un pulsante **Help** e accetta il comando testuale `help` (alias `aiuto` e `guida`). Non ci sono schede fittizie di competenze non realizzate.
+
+All'inizio elenca gli strumenti presenti: `Psicofråg`, ricerca Internet, `studia pagina`, `memoria`, `laboratorio`, `insegna`, `lingua`, `parliamo`, `poesia`, `pixel`, `frap`, `autoritratto`, `3d`, `musica`, `fotocamera`. Ogni voce è selezionabile e presenta descrizione, esempio e possibili limiti.
+
+**Il catalogo viene ricostruito dal disco** ogni volta che lo apri, e rinfrescato se è già visibile al termine dell'apprendimento. Si popola automaticamente con tre gruppi **chiaramente separati**:
+
+1. **Comandi disponibili**: le azioni effettivamente implementate nell'app.
+2. **Moduli FRAP salvati**: ogni file FRAP validato produce una voce **eseguibile** `frap: nome`, mostra il codice sorgente, il suo `*.svg` e anche un vero `*.png` di anteprima del disegno salvato.
+3. **Concetti e memorie acquisiti**: pagine Internet, lezioni, nuove parole, foto etichettate e bozze di poesie sono recuperabili con `memoria: <id>` oppure `ricorda: tipo/nome` e possono mostrare un PNG dal materiale reale. Sono **memorie**: imparare una parola non equivale a creare una nuova funzione Android.
+
+Per esempio: cerca `quadrato geometria`, apri un sito, poi `help` e cerca `quadrato`. Visualizzi titolo, URL, associazioni lessicali, PNG e un comando di recupero del concetto. Oppure apri **Laboratorio → FRAP**, salva un modulo `figura1` e cerca `figura1` in Help: appariranno un comando `frap: figura1` e un'anteprima del disegno.
+
+La guida utilizza i file **realmente salvati** `*.txt`, `*.png`, `*.frap` e non inventa nuove capacità di IA; nessuna istruzione di una pagina Web diventa codice Android arbitrario. La ricerca della guida funziona offline. Per scalabilità mostra massimo 125 voci per filtro, indicando il totale.
