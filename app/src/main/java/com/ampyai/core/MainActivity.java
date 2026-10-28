@@ -303,7 +303,8 @@ public final class MainActivity extends Activity {
                     String code=new String(Files.readAllBytes(script.toPath()),
                             StandardCharsets.UTF_8);
                     FrapEngine.parse(code); // indexed as runnable ONLY if valid.
-                    helpEntries.add(FragHelpCatalog.frap(name,code,null));
+                    helpEntries.add(FragHelpCatalog.frap(name,code,
+                        new File(folder,name+".png")));
                 }catch(Exception ignored) {}
             }
         }
@@ -463,9 +464,28 @@ public final class MainActivity extends Activity {
         }
         try {
             String source=new String(Files.readAllBytes(text.toPath()),StandardCharsets.UTF_8);
-            FragHelpCatalog.Entry entry=FragHelpCatalog.personal(kind,name,source,
-                    new File(dir,name+".png"));
-            showHelpDetails(entry);
+            ScrollView scroll=new ScrollView(this);
+            LinearLayout content=new LinearLayout(this);
+            content.setOrientation(LinearLayout.VERTICAL);
+            content.setPadding(dp(14),dp(10),dp(14),dp(10));
+            scroll.addView(content);
+            File imageFile=new File(dir,name+".png");
+            if(imageFile.isFile()) {
+                BitmapFactory.Options opts=new BitmapFactory.Options();
+                opts.inSampleSize=2;
+                Bitmap picture=BitmapFactory.decodeFile(imageFile.getAbsolutePath(),opts);
+                if(picture!=null) {
+                    ImageView preview=new ImageView(this);
+                    preview.setImageBitmap(picture);
+                    preview.setAdjustViewBounds(true);
+                    content.addView(preview,new LinearLayout.LayoutParams(-1,dp(200)));
+                }
+            }
+            TextView body=label(source,13,0xFF12282A);
+            body.setTextIsSelectable(true);
+            content.addView(body);
+            new AlertDialog.Builder(this).setTitle(kind+" · "+name)
+                    .setView(scroll).setPositiveButton("Chiudi",null).show();
         }catch(IOException ex){log("Memoria non leggibile: "+ex.getMessage());}
     }
 
@@ -732,6 +752,18 @@ public final class MainActivity extends Activity {
                         source.getBytes(StandardCharsets.UTF_8));
                     Files.write(new File(dir,tag+".svg").toPath(),
                         program.toSvg().getBytes(StandardCharsets.UTF_8));
+                    // PNG is a real raster render of the validated FRAP drawing.
+                    Bitmap raster=Bitmap.createBitmap(500,500,Bitmap.Config.ARGB_8888);
+                    try {
+                        picture.render(program);
+                        picture.layout(0,0,500,500);
+                        picture.draw(new Canvas(raster));
+                        try(java.io.FileOutputStream out=new java.io.FileOutputStream(
+                                new File(dir,tag+".png"))) {
+                            if(!raster.compress(Bitmap.CompressFormat.PNG,100,out))
+                                throw new IOException("PNG FRAP non generato.");
+                        }
+                    } finally {raster.recycle();}
                     refreshHelpIfOpen();
                     log("Modulo FRAP salvato: "+tag+".frap e "+tag+".svg. "+
                         "Nessun codice Java viene eseguito.");
