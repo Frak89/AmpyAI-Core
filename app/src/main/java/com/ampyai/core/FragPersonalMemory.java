@@ -100,7 +100,7 @@ public final class FragPersonalMemory {
         write(txt,"ETICHETTA UTENTE: "+label+"\n"+
                 "OSSERVAZIONE: foto etichettata, non classificazione automatica.\n");
         File image=new File(observations,id+".png");
-        try(FileOutputStream out=new FileOutputStream(image))out.write(png);
+        try(FileOutputStream out=new FileOutputStream(image)) {out.write(png);}
         return fresh;
     }
     public synchronized void savePoem(String text) throws IOException {
