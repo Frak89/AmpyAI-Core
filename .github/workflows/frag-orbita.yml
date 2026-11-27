@@ -1,7 +1,7 @@
 name: Frag Orbita APK
 on:
-  push:
-    branches: [feature/frag-orbita-local]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 jobs:
   android:
