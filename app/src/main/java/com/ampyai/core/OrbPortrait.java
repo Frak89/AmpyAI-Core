@@ -39,19 +39,19 @@ final class OrbPortrait extends View {
     }
     OrbPortrait(Context context){
         super(context);
-        oval(0,-.92,0,.91,.44,.39,DARK,0);
-        oval(0,-.57,0,.29,.40,.28,SKIN,0);
-        oval(0,.08,0,.62,.73,.46,SKIN,0);
-        oval(0,-.09,.36,.49,.30,.26,SKIN,0);
+        oval(0,-.92f,0,.91f,.44f,.39f,DARK,0);
+        oval(0,-.57f,0,.29f,.40f,.28f,SKIN,0);
+        oval(0,.08f,0,.62f,.73f,.46f,SKIN,0);
+        oval(0,-.09f,.36f,.49f,.30f,.26f,SKIN,0);
         for(int side:new int[]{-1,1}){
-            oval(side*.35,.37,.23,.29,.25,.24,SKIN,0);
-            oval(side*.35,.39,.43,.162,.135,.063,GOLD,1);
-            oval(side*.35,.39,.484,.042,.097,.022,DARK,1);
-            oval(side*.35-.029,.43,.503,.022,.024,.012,ICE,1);
-            oval(side*.16,.004,.585,.032,.022,.018,DARK,0);
+            oval(side*.35f,.37f,.23f,.29f,.25f,.24f,SKIN,0);
+            oval(side*.35f,.39f,.43f,.162f,.135f,.063f,GOLD,1);
+            oval(side*.35f,.39f,.484f,.042f,.097f,.022f,DARK,1);
+            oval(side*.35f-.029f,.43f,.503f,.022f,.024f,.012f,ICE,1);
+            oval(side*.16f,.004f,.585f,.032f,.022f,.018f,DARK,0);
         }
-        oval(0,-.20,.58,.255,.057,.035,0xff142e3b,2);
-        oval(0,-.254,.545,.246,.038,.059,SKIN,3);
+        oval(0,-.20f,.58f,.255f,.057f,.035f,0xff142e3b,2);
+        oval(0,-.254f,.545f,.246f,.038f,.059f,SKIN,3);
         setContentDescription("Fråg, ritratto tridimensionale ruotabile");
     }
     private static float[] point(double a,double b,float x,float y,float z,float w,float h,float d){
