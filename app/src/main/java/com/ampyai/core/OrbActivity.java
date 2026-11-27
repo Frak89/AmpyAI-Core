@@ -28,6 +28,8 @@ public final class OrbActivity extends Activity {
     private LinearLayout page;
     private Button ask;
     private TextToSpeech voice;
+    private android.speech.SpeechRecognizer recognizer;
+    private boolean listening;
     private boolean voiceReady,busy,dead;
     private LlmInference engine;
     private String answer="", utterance="";
@@ -45,7 +47,7 @@ public final class OrbActivity extends Activity {
         page.setOnApplyWindowInsetsListener((v,i)->{android.graphics.Insets a=i.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.ime());page.setPadding(px(12),a.top,px(12),a.bottom);return i;});
         setContentView(page);
         LinearLayout header=row();TextView title=text("F R Å G",23);header.addView(title,new LinearLayout.LayoutParams(0,-2,1));
-        action(header,"Opzioni",this::options);
+        action(header,"Detta",this::dictate);action(header,"Opzioni",this::options);
         face=new OrbPortrait(this);page.addView(face,new LinearLayout.LayoutParams(-1,0,1.15f));
         status=text(weights().isFile()?"Modello locale pronto":"Configura Gemma in Opzioni",13);page.addView(status);
         transcript=new ScrollView(this);reply=text("Chiedimi delle tue app o scrivi qualcosa da ricordare.",17);reply.setTextIsSelectable(true);transcript.addView(reply);page.addView(transcript,new LinearLayout.LayoutParams(-1,0,1));
@@ -89,6 +91,45 @@ public final class OrbActivity extends Activity {
         if(voiceReady&&prefs().getBoolean("speech",true))voice.speak(s,TextToSpeech.QUEUE_FLUSH,null,utterance);
         ui.removeCallbacks(type);ui.post(type);
     }
+    private void dictate(){
+        if(busy||listening)return;
+        if(!android.speech.SpeechRecognizer.isOnDeviceRecognitionAvailable(this)){
+            status.setText("Dettatura locale indisponibile. Puoi scrivere la domanda.");return;
+        }
+        if(checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO},41);return;
+        }
+        if(voice!=null)voice.stop();
+        audioClock=false;
+        if(recognizer==null){
+            recognizer=android.speech.SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
+            recognizer.setRecognitionListener(new android.speech.RecognitionListener(){
+                public void onReadyForSpeech(Bundle b){status.setText("In ascolto sul Pixel…");}
+                public void onBeginningOfSpeech(){}
+                public void onRmsChanged(float db){}
+                public void onBufferReceived(byte[] bytes){}
+                public void onEndOfSpeech(){status.setText("Trascrizione locale…");}
+                public void onError(int code){listening=false;status.setText("Dettatura locale interrotta ("+code+"). Riprova o scrivi.");}
+                public void onResults(Bundle b){
+                    listening=false;
+                    ArrayList<String> words=b.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);
+                    if(words!=null&&!words.isEmpty()){input.setText(words.get(0));input.setSelection(input.length());status.setText("Domanda trascritta · premi Chiedi");}
+                }
+                public void onPartialResults(Bundle b){}
+                public void onEvent(int type,Bundle b){}
+            });
+        }
+        Intent request=new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,"it-IT");
+        listening=true;
+        try{recognizer.startListening(request);}catch(RuntimeException e){listening=false;status.setText("Dettatura locale indisponibile");}
+    }
+    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){
+        super.onRequestPermissionsResult(request,permissions,grants);
+        if(request==41&&grants.length>0&&grants[0]==android.content.pm.PackageManager.PERMISSION_GRANTED)dictate();
+    }
+    @Override protected void onStop(){if(listening&&recognizer!=null){recognizer.cancel();listening=false;}super.onStop();}
     private void options(){
         String[] labels={"Scarica Gemma 3 1B","Importa modello .task","Pulsante di accessibilità","Statistiche utilizzo app","Memoria e studio","Apri AmpyOrb","Voce locale: "+(prefs().getBoolean("speech",true)?"attiva":"spenta"),"Configura ponte OpenAI","Dimentica le note personali"};
         new AlertDialog.Builder(this).setItems(labels,(d,i)->{
@@ -202,5 +243,5 @@ public final class OrbActivity extends Activity {
           .setPositiveButton("Usa ponte",(d,w)->prefs().edit().putString("bridgeToken",token.getText().toString().trim()).putBoolean("bridge",true).putBoolean("mentor",mentor.isChecked()).apply())
           .setNeutralButton("Usa app ChatGPT",(d,w)->prefs().edit().putBoolean("bridge",false).putBoolean("mentor",false).apply()).setNegativeButton("Chiudi",null).show();
     }
-    @Override protected void onDestroy(){dead=true;ui.removeCallbacksAndMessages(null);if(voice!=null)voice.shutdown();worker.execute(()->{if(engine!=null)engine.close();});worker.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){dead=true;ui.removeCallbacksAndMessages(null);if(recognizer!=null)recognizer.destroy();if(voice!=null)voice.shutdown();worker.execute(()->{if(engine!=null)engine.close();});worker.shutdown();super.onDestroy();}
 }
