@@ -1,4 +1,4 @@
-name: Fråg primordial Android APK
+name: Fråg Orbita Android APK
 on:
   push:
     branches: [main, feature/frag-reset]
@@ -14,17 +14,17 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
       - uses: android-actions/setup-android@v4
-      - name: Install SDK 36
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Install SDK 37
+        run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.13'
+          gradle-version: '9.3.1'
       - name: Unit test + compile Android APK
         run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: Frag-Primordial-debug-APK
+          name: Frag-Orbita-Android17
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

@@ -1,0 +1,9 @@
+# Fråg Orbita per Android 17
+
+Avvia Fråg, scegli Opzioni → Scarica Gemma 3 1B oppure importa il file Gemma3-1B-IT_multi-prefill-seq_q4_block128_ekv1280.task da litert-community/Gemma3-1B-IT. Attendi la verifica del modello. Chiedi esegue l'inferenza sul dispositivo. La prima configurazione scarica circa 0,7 GB. Il modello ha licenza Gemma.
+
+Ricorda conserva una nota o l'ultima risposta. Memoria e studio apre il laboratorio Fråg originario, che conserva concetti e addestra la rete a caratteri. La chat usa estratti pertinenti e note come contesto. Le modifiche al contesto e la crescita della rete a caratteri sono indipendenti dai pesi Gemma.
+
+In Opzioni → Pulsante di accessibilità, abilita Chiedi a Fråg e la relativa scorciatoia Android. Le domande si possono scrivere o dettare con Detta, se sul Pixel è disponibile il riconoscitore locale italiano, con risposta visiva e voce italiana offline quando disponibile. In Statistiche utilizzo app autorizza Fråg per includere le principali app per tempo in primo piano nelle risposte locali. I tempi restituiti da Android sono aggregati e possono oltrepassare il limite esatto dell'intervallo. La chat non legge i contenuti delle altre app.
+
+Il pulsante ChatGPT condivide la domanda con l'app compatibile. Per ricevere risposte direttamente in Fråg, imposta OPENAI_API_KEY sul PC, collega il telefono tramite ADB autorizzato, esegui `adb reverse tcp:8769 tcp:8769` e `python tools/frag_bridge.py`. Incolla il token mostrato in Opzioni → Configura ponte OpenAI. Le richieste al ponte utilizzano l'API OpenAI fatturata separatamente. Il modello si può scegliere sul PC con OPENAI_MODEL. Le note e le statistiche restano sul telefono. Attiva Mentore automatico per inviare anche la domanda inserita con Chiedi. Fråg conserva un breve appunto locale della risposta del ponte e lo usa nel contesto di Gemma. Se il ponte è offline, Gemma continua in locale. Dimentica le note personali cancella anche gli appunti del mentore.
