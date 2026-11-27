@@ -7,9 +7,10 @@ android {
         applicationId 'com.ampyai.core'
         minSdk 37
         targetSdk 37
-        versionCode 2
-        versionName '0.2.0-orbita'
+        versionCode 3
+        versionName '0.2.1-smeraldo'
     }
+    testOptions { unitTests.includeAndroidResources = true }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -17,5 +18,6 @@ android {
 }
 dependencies {
     implementation 'com.google.mediapipe:tasks-genai:0.10.27'
+    testImplementation 'org.robolectric:robolectric:4.16.1'
     testImplementation 'junit:junit:4.13.2'
 }

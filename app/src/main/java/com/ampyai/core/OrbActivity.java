@@ -46,12 +46,12 @@ public final class OrbActivity extends Activity {
         page=new LinearLayout(this);page.setOrientation(1);page.setBackgroundColor(0xff09131d);
         page.setOnApplyWindowInsetsListener((v,i)->{android.graphics.Insets a=i.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.ime());page.setPadding(px(12),a.top,px(12),a.bottom);return i;});
         setContentView(page);
-        LinearLayout header=row();TextView title=text("F R Å G",23);header.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout header=row();TextView title=text("F R Å G",26);title.setTypeface(android.graphics.Typeface.MONOSPACE,1);header.addView(title,new LinearLayout.LayoutParams(0,-2,1));
         action(header,"Detta",this::dictate);action(header,"Opzioni",this::options);
-        face=new OrbPortrait(this);page.addView(face,new LinearLayout.LayoutParams(-1,0,1.15f));
+        face=new OrbPortrait(this);page.addView(face,new LinearLayout.LayoutParams(-1,0,2.6f));
         status=text(weights().isFile()?"Modello locale pronto":"Configura Gemma in Opzioni",13);page.addView(status);
-        transcript=new ScrollView(this);reply=text("Chiedimi delle tue app o scrivi qualcosa da ricordare.",17);reply.setTextIsSelectable(true);transcript.addView(reply);page.addView(transcript,new LinearLayout.LayoutParams(-1,0,1));
-        input=new EditText(this);input.setTextColor(-1);input.setHintTextColor(0xff97a9bd);input.setHint("Domanda per Fråg");input.setMaxLines(3);input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(1200)});page.addView(input);
+        transcript=new ScrollView(this);reply=text("Chiedimi delle tue app o scrivi qualcosa da ricordare.",17);reply.setTypeface(android.graphics.Typeface.MONOSPACE);reply.setTextIsSelectable(true);reply.setPadding(px(12),px(12),px(12),px(12));transcript.setBackground(panel(0xff08131e,0xff30404c));transcript.addView(reply);page.addView(transcript,new LinearLayout.LayoutParams(-1,0,1));
+        input=new EditText(this);input.setTextColor(-1);input.setBackground(panel(0xff0b1927,0xff536875));input.setPadding(px(12),px(8),px(12),px(8));input.setHintTextColor(0xff97a9bd);input.setHint("Domanda per Fråg");input.setMaxLines(3);input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(1200)});page.addView(input);
         LinearLayout controls=row();ask=action(controls,"Chiedi",this::generate);action(controls,"Ricorda",()->new AlertDialog.Builder(this).setItems(new String[]{"Salva testo inserito","Salva ultima risposta"},(d,i)->remember(i==0?input.getText().toString():answer)).show());action(controls,"ChatGPT",this::handoff);
         accept(getIntent());voice=new TextToSpeech(this,this::voiceInit);
     }
@@ -60,7 +60,8 @@ public final class OrbActivity extends Activity {
     private int px(int n){return Math.round(getResources().getDisplayMetrics().density*n);}
     private TextView text(String s,int size){TextView v=new TextView(this);v.setText(s);v.setTextSize(size);v.setTextColor(MINT);v.setPadding(px(4),px(4),px(4),px(4));return v;}
     private LinearLayout row(){LinearLayout r=new LinearLayout(this);r.setGravity(Gravity.CENTER_VERTICAL);page.addView(r);return r;}
-    private Button action(LinearLayout r,String s,Runnable fn){Button b=new Button(this);b.setAllCaps(false);b.setText(s);b.setOnClickListener(v->fn.run());r.addView(b);return b;}
+    private android.graphics.drawable.GradientDrawable panel(int fill,int stroke){android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();d.setColor(fill);d.setCornerRadius(px(9));d.setStroke(px(1),stroke);return d;}
+    private Button action(LinearLayout r,String s,Runnable fn){Button b=new Button(this);b.setAllCaps(false);b.setText(s);b.setOnClickListener(v->fn.run());b.setTextColor(-1);b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(px(12),0,px(12),0);b.setBackground(panel(s.equals("Chiedi")?0xff105a59:0xff172733,0xff30424e));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(r.getChildCount()==0||s.equals("Ricorda")||s.equals("ChatGPT")?0:-2,px(40));if(lp.width==0)lp.weight=1;lp.setMargins(px(3),px(6),px(3),px(6));r.addView(b,lp);return b;}
     private void voiceInit(int code){
         if(dead||code!=TextToSpeech.SUCCESS||voice==null)return;
         for(Voice v:voice.getVoices()==null?Collections.<Voice>emptySet():voice.getVoices()){
