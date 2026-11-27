@@ -1,0 +1,1 @@
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android" android:accessibilityFlags="flagRequestAccessibilityButton" android:accessibilityFeedbackType="feedbackGeneric" android:canRetrieveWindowContent="false" android:description="@string/orb_shortcut_description"/>
