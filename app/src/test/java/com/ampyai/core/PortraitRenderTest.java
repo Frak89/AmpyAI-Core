@@ -14,7 +14,7 @@ import org.robolectric.annotation.*;
 import org.robolectric.android.controller.ActivityController;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk=35,qualifiers="w412dp-h850dp-xxhdpi")
+@Config(sdk=37,qualifiers="w412dp-h850dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class PortraitRenderTest {
     @Test public void drawsTalkingPortrait() throws Exception {
